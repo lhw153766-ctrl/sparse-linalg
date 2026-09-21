@@ -1,7 +1,14 @@
 # sparse-linalg
 
+[![mooncakes.io](https://img.shields.io/badge/mooncakes.io-0.1.0-blue)](https://mooncakes.io/docs/lhw153766-ctrl/sparse-linalg)
+[![CI](https://github.com/lhw153766-ctrl/sparse-linalg/actions/workflows/ci.yml/badge.svg)](https://github.com/lhw153766-ctrl/sparse-linalg/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Numeric sparse linear algebra for MoonBit: compressed storage, sparse kernels,
 and solvers that work on matrices too large to store densely.
+
+Published on mooncakes.io as
+[`lhw153766-ctrl/sparse-linalg@0.1.0`](https://mooncakes.io/docs/lhw153766-ctrl/sparse-linalg).
 
 A 100,000 x 100,000 matrix with about ten non-zeros per row has 10<sup>10</sup>
 dense entries — roughly 80 GB as `Double`, which no machine you are likely to
