@@ -22,8 +22,37 @@ search:
    real functionality.
 3. The 20 public symbols this project exposes were grepped across those
    interfaces.
+4. Every module whose name, keywords or description matched the vocabulary of
+   matrices, linear algebra, solvers or factorisation was listed and inspected
+   — 51 modules — and each was classified by the storage type in its generated
+   interface, not by what its description claims. That pass is what turned up
+   `xunyoyo/linalg`, whose description ("Linear Algebra Library") says nothing
+   about whether it is dense. It is dense, and it is now in the table below.
 
-## The three libraries a reviewer will find first
+## Every numeric linear algebra library in the registry
+
+The four below are the ones a reviewer will find first, but the search turned up
+more, and all of them were checked the same way — by reading their generated
+interfaces rather than their descriptions. None of them provides numeric sparse
+storage.
+
+| Module | Storage | What it solves | Sparse? |
+|---|---|---|---|
+| `Luna-Flow/linear-algebra` 0.4.7 | `Matrix` over contiguous memory | dense `cholesky_decomposition`, `eigen` | no — the curated listing calls it "dense representations" |
+| `xunyoyo/linalg` 0.2.7 | `Matrix` over `Array[Array[Double]]` | dense `cholesky`, `eigen`, `inv`, `qr`, `svd`, `lstsq`, `det` | no — no `sparse` symbol in the module, and the mooncakes.io page does not mention sparseness |
+| `amor2025/moonNum` 0.1.0 | `NdArray` | dense `cholesky`, `solve`, `svd`, `eig`, `lstsq` | no |
+| `mizchi/numbt` 0.2.4 | NumPy-style `NdArray` | dense array arithmetic | no |
+| `AdUhTkJm/nummoon` 0.2.3 | native numeric arrays | dense | no |
+| `mizchi/blas`, `Kaida-Amethyst/openblas` | bindings | dense BLAS/LAPACK | no |
+| `KCN-judu/linear-algebra` 0.3.1 | superseded | its own README says it moved to Luna-Flow | no |
+| `CAIMEOX/symbit` 0.5.10 | `Expr` syntax tree | symbolic elimination, exact rationals | symbolic, not numeric |
+| `Luna-Flow/luna-poly` 0.2.0 | sparse **polynomial** representation | polynomial arithmetic | sparse polynomials, not matrices |
+| `Luna-Flow/autodiff`, `FlyCloudC/autodiff`, `lyjttio/moongrad` | tapes and tensors | automatic differentiation | no |
+| `oboard/numoon` 0.4.1 | scalar helpers | trigonometry, `linspace`, array construction | no |
+
+Two entries deserve a note because their names invite a false match. `Luna-Flow/luna-poly` really is sparse, but of polynomials. `DawnMagnet/sparse-table` is a sparse *table* for range-minimum queries, which is a data structure unrelated to matrices.
+
+## The four libraries a reviewer will find first
 
 | | this project | `Luna-Flow/linear-algebra` | `amor2025/moonNum` | `CAIMEOX/symbit` |
 |---|---|---|---|---|
