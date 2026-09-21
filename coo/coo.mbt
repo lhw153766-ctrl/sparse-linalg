@@ -28,7 +28,7 @@ pub struct Coo[F] {
   rows : Array[Int]
   cols : Array[Int]
   vals : Array[F]
-}
+} derive(Debug)
 
 ///|
 /// An empty COO matrix with the given shape.
