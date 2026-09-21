@@ -472,3 +472,121 @@ test "relative_residual reports a wrong solution as not small" {
     content="true",
   )
 }
+
+///|
+// The 5-point stencil on a `k x k` grid, built directly as CSR arrays so the
+// solver tests do not need the assembly package.
+fn warm_grid(k : Int) -> @csr.Csr[Double] {
+  let n = k * k
+  let rp : Array[Int] = Array::make(n + 1, 0)
+  let ci : Array[Int] = Array(capacity=5 * n)
+  let va : Array[Double] = Array(capacity=5 * n)
+  for r = 0; r < k; r = r + 1 {
+    for c = 0; c < k; c = c + 1 {
+      let v = r * k + c
+      let cols : Array[Int] = [v]
+      if r > 0 {
+        cols.push(v - k)
+      }
+      if r + 1 < k {
+        cols.push(v + k)
+      }
+      if c > 0 {
+        cols.push(v - 1)
+      }
+      if c + 1 < k {
+        cols.push(v + 1)
+      }
+      cols.sort()
+      for col in cols {
+        ci.push(col)
+        va.push(if col == v { 4.0 } else { -1.0 })
+      }
+      rp[v + 1] = ci.length()
+    }
+  }
+  @csr.Csr::new_unchecked(n, n, rp, ci, va)
+}
+
+///|
+test "a warm start saves iterations on a 2D grid" {
+  // Reusing the previous solution of a slowly changing system is what a warm
+  // start is for, and here it pays: starting from a slightly perturbed solution
+  // takes about a third fewer iterations than starting from zero.
+  //
+  // It does not always pay. On a 1D tridiagonal system with a constant
+  // right-hand side, cold and warm both take the same number of iterations,
+  // because there the convergence is limited by the smoothness of the
+  // right-hand side rather than by the size of the starting residual.
+  let k = 20
+  let a = warm_grid(k)
+  let n = k * k
+  let b : Array[Double] = Array::make(n, 1.0)
+  let cold = @solve.cg(a, b)
+  inspect(cold.converged, content="true")
+  let perturbed : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    perturbed[i] = cold.x[i] * 1.000001
+  }
+  let warm = @solve.cg(a, b, initial=Some(perturbed))
+  inspect(warm.converged, content="true")
+  inspect(warm.iterations < cold.iterations, content="true")
+  inspect(@solve.relative_residual(a, warm.x, b) <= 1.0e-10, content="true")
+  // The answer must be the same one, reached sooner.
+  for i = 0; i < n; i = i + 1 {
+    inspect(Double::abs(warm.x[i] - cold.x[i]) < 1.0e-8, content="true")
+  }
+}
+
+///|
+test "a warm start that is already the answer returns immediately" {
+  let n = 20
+  let a = tridiagonal(n)
+  let b : Array[Double] = Array::make(n, 1.0)
+  let exact = @solve.solve_cholesky(a, b)
+  let warm = @solve.cg(a, b, initial=Some(exact))
+  inspect(warm.converged, content="true")
+  inspect(warm.iterations, content="0")
+  inspect(warm.residual <= 1.0e-10, content="true")
+}
+
+///|
+test "all three solvers accept a warm start" {
+  let a = nonsym2()
+  let b = [1.0, 1.0]
+  let exact = [0.2, 0.2]
+  let via_bi = @solve.bicgstab(a, b, initial=Some(exact))
+  inspect(via_bi.iterations, content="0")
+  let via_gm = @solve.gmres(a, b, initial=Some(exact))
+  inspect(via_gm.iterations, content="0")
+  inspect(@solve.relative_residual(a, via_gm.x, b) <= 1.0e-12, content="true")
+}
+
+///|
+test "a warm start of the wrong length is rejected" {
+  let a = spd2()
+  let too_long = try {
+    let _ = @solve.cg(a, [1.0, 2.0], initial=Some([1.0, 2.0, 3.0]))
+    false
+  } catch {
+    _ => true
+  }
+  inspect(too_long, content="true")
+  let too_short = try {
+    let _ = @solve.bicgstab(a, [1.0, 2.0], initial=Some([1.0]))
+    false
+  } catch {
+    _ => true
+  }
+  inspect(too_short, content="true")
+}
+
+///|
+test "the starting point is copied, not aliased" {
+  // A solver must not write into the caller's array.
+  let a = spd2()
+  let b = [1.0, 2.0]
+  let start = [0.0, 0.0]
+  let _ = @solve.cg(a, b, initial=Some(start))
+  debug_inspect(start, content="[0, 0]")
+}

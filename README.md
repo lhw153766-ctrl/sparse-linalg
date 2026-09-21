@@ -26,7 +26,7 @@ are in place; the API may still change before 0.2.0.
 | `io` | Matrix Market (`.mtx`) reading and writing |
 | `graph` | Degree, adjacency construction, Laplacians, connected components, PageRank |
 
-4,566 lines of MoonBit, plus 3,235 lines of tests.
+4,600 lines of MoonBit, plus 3,300 lines of tests.
 
 ## Install
 
@@ -165,6 +165,36 @@ and it would be easy to claim an improvement that is not there. RCM recovers
 the bandwidth of the scrambled matrix exactly and ends up with a factor smaller
 than the natural numbering's, without being told the matrix is a grid.
 
+## Performance
+
+`moon bench` measures the kernels. On a tridiagonal system, ten times the
+stored entries takes ten times as long — which is the property that matters,
+since the dense counterpart of the 10000-point case would hold 100,000,000
+entries:
+
+| kernel | time |
+|---|---|
+| `spmv` CSR, 1000x1000, 2,998 stored entries | 12.95 µs |
+| `spmv` CSC, 1000x1000 | 14.53 µs |
+| `spmv_transpose` CSC, 1000x1000 | 12.91 µs |
+| `spmv_add`, 1000x1000 | 12.46 µs |
+| `spmv` CSR, 10000x10000, 29,998 stored entries | 129.32 µs |
+
+## Warm starting
+
+A solver can start from a previous solution, which is what a time-stepping loop
+wants:
+
+```moonbit
+let result = @solve.cg(a, b, initial=Some(previous_solution))
+```
+
+On a 20x20 grid Laplacian, starting from a solution perturbed by 1e-6 takes 26
+iterations against 40 from zero. It does not always pay — on a 1D tridiagonal
+system with a constant right-hand side the iteration count is the same either
+way, because there the convergence is limited by the smoothness of the
+right-hand side rather than by the size of the starting residual.
+
 ## Reproduce the test suite
 
 ```
@@ -175,7 +205,7 @@ moon test  --target all
 moon fmt --check
 ```
 
-197 tests, passing on `wasm`, `wasm-gc`, `js` and `native`. CI runs the same
+202 tests, passing on `wasm`, `wasm-gc`, `js` and `native`. CI runs the same
 commands on Linux, macOS and Windows.
 
 Three kinds of test are used, and the distinction matters:

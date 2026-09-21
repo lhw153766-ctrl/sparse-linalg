@@ -30,16 +30,28 @@ pub fn cg(
   b : Array[Double],
   options? : SolverOptions = SolverOptions::defaults(),
   precond? : Precond = Precond::Identity,
+  initial? : Array[Double]? = None,
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
   let n = a.nrows()
-  let x : Array[Double] = Array::make(n, 0.0)
+  let x = starting_point(a, initial)
   let nb = norm2(b)
   if nb == 0.0 {
-    // A x = 0 with x = 0 is exact.
-    return { x, iterations: 0, residual: 0.0, converged: true, }
+    // A x = 0 is solved exactly by x = 0.
+    return {
+      x: Array::make(n, 0.0),
+      iterations: 0,
+      residual: 0.0,
+      converged: true,
+    }
   }
-  let r = b.copy()
+  let r = sub_vec(b, a.spmv(x))
+  let first_residual = norm2(r) / nb
+  if first_residual <= options.tol {
+    // The starting point already meets the tolerance. That is the point of a
+    // warm start: reusing the previous solution of a slowly changing system.
+    return { x, iterations: 0, residual: first_residual, converged: true, }
+  }
   let mut z = precond.apply(r)
   let p = z.copy()
   let mut rz = dot(r, z)
@@ -97,16 +109,26 @@ pub fn bicgstab(
   b : Array[Double],
   options? : SolverOptions = SolverOptions::defaults(),
   precond? : Precond = Precond::Identity,
+  initial? : Array[Double]? = None,
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
   let n = a.nrows()
-  let x : Array[Double] = Array::make(n, 0.0)
+  let x = starting_point(a, initial)
   let nb = norm2(b)
   if nb == 0.0 {
-    return { x, iterations: 0, residual: 0.0, converged: true, }
+    return {
+      x: Array::make(n, 0.0),
+      iterations: 0,
+      residual: 0.0,
+      converged: true,
+    }
   }
-  let r = b.copy()
-  let r_hat = b.copy()
+  let r = sub_vec(b, a.spmv(x))
+  let first_residual = norm2(r) / nb
+  if first_residual <= options.tol {
+    return { x, iterations: 0, residual: first_residual, converged: true, }
+  }
+  let r_hat = r.copy()
   let mut p : Array[Double] = Array::make(n, 0.0)
   let mut v : Array[Double] = Array::make(n, 0.0)
   let mut rho_old = 1.0
@@ -189,6 +211,30 @@ pub fn bicgstab(
 }
 
 ///|
+// Resolve the starting point. A caller who has a previous solution — from the
+// last time step, or from a slightly perturbed problem — can hand it in and
+// save the iterations it would take to rediscover it.
+fn starting_point(
+  a : @csr.Csr[Double],
+  initial : Array[Double]?,
+) -> Array[Double] raise @err.SparseError {
+  match initial {
+    None => Array::make(a.nrows(), 0.0)
+    Some(x0) => {
+      if x0.length() != a.nrows() {
+        raise @err.SparseError::DimensionMismatch(
+          "initial guess has length " +
+          x0.length().to_string() +
+          ", expected " +
+          a.nrows().to_string(),
+        )
+      }
+      x0.copy()
+    }
+  }
+}
+
+///|
 /// Restarted GMRES, for general square systems.
 ///
 /// Builds an orthonormal basis of the Krylov subspace and minimises the
@@ -205,6 +251,7 @@ pub fn gmres(
   options? : SolverOptions = SolverOptions::defaults(),
   precond? : Precond = Precond::Identity,
   restart? : Int = 30,
+  initial? : Array[Double]? = None,
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
   if restart <= 0 {
@@ -213,10 +260,15 @@ pub fn gmres(
     )
   }
   let n = a.nrows()
-  let x : Array[Double] = Array::make(n, 0.0)
+  let x = starting_point(a, initial)
   let nb = norm2(b)
   if nb == 0.0 {
-    return { x, iterations: 0, residual: 0.0, converged: true, }
+    return {
+      x: Array::make(n, 0.0),
+      iterations: 0,
+      residual: 0.0,
+      converged: true,
+    }
   }
   let m = restart
   // Basis vectors, stored as m+1 dense vectors of length n.

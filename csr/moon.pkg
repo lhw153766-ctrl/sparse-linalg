@@ -1,3 +1,8 @@
 import {
   "lhw153766-ctrl/sparse-linalg/types" @err,
 }
+
+import {
+  "moonbitlang/core/bench",
+  "lhw153766-ctrl/sparse-linalg/csc",
+} for "test"
