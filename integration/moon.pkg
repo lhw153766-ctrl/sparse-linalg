@@ -1,0 +1,11 @@
+import {
+  "lhw153766-ctrl/sparse-linalg/types" @err,
+  "lhw153766-ctrl/sparse-linalg/coo",
+  "lhw153766-ctrl/sparse-linalg/csr",
+  "lhw153766-ctrl/sparse-linalg/csc",
+  "lhw153766-ctrl/sparse-linalg/ops",
+  "lhw153766-ctrl/sparse-linalg/solve",
+  "lhw153766-ctrl/sparse-linalg/reorder",
+  "lhw153766-ctrl/sparse-linalg/graph",
+  "lhw153766-ctrl/sparse-linalg/io",
+} for "test"
