@@ -230,6 +230,13 @@ Three kinds of test are used, and the distinction matters:
 
 Apache-2.0. See [LICENSE](LICENSE).
 
+## Development log
+
+[docs/development-log.md](docs/development-log.md) records the design decisions
+and trade-offs, the six bugs that were found while building this and how each
+one was caught, the verification strategy, and the known limitations — including
+the ones that are still sharp edges.
+
 ## How this relates to the other MoonBit numerical libraries
 
 Short version: the existing libraries are dense and this one is sparse. The
