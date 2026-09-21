@@ -1,0 +1,7 @@
+import {
+  "lhw153766-ctrl/sparse-linalg/coo",
+  "lhw153766-ctrl/sparse-linalg/solve",
+  "moonbitlang/core/math",
+}
+
+pkgtype(kind: "executable")

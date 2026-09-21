@@ -1,5 +1,0 @@
-// import {
-//   "lhw153766-ctrl/sparse-linalg" @lib,
-// }
-
-pkgtype(kind: "executable")

@@ -1,0 +1,8 @@
+import {
+  "lhw153766-ctrl/sparse-linalg/types" @err,
+  "lhw153766-ctrl/sparse-linalg/coo",
+  "lhw153766-ctrl/sparse-linalg/io",
+  "lhw153766-ctrl/sparse-linalg/solve",
+}
+
+pkgtype(kind: "executable")
