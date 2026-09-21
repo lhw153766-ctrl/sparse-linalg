@@ -19,6 +19,11 @@ pub fn[F] Csc::from_csr(a : @csr.Csr[F]) -> Csc[F] {
   let row_ptr = a.row_ptr()
   let col_idx = a.col_idx()
   let vals = a.vals()
+  if nnz == 0 {
+    // The scatter below needs a seed value to size its arrays, and there is
+    // none to take from an empty matrix, so stop here.
+    return Csc::new_unchecked(nrows, ncols, Array::make(ncols + 1, 0), [], [])
+  }
   // count entries per column
   let col_ptr : Array[Int] = Array::make(ncols + 1, 0)
   for k = 0; k < nnz; k = k + 1 {
@@ -52,6 +57,15 @@ pub fn[F] Csc::to_csr(self : Csc[F]) -> @csr.Csr[F] {
   let col_ptr = self.col_ptr
   let row_idx = self.row_idx
   let vals = self.vals
+  if nnz == 0 {
+    return @csr.Csr::new_unchecked(
+      nrows,
+      ncols,
+      Array::make(nrows + 1, 0),
+      [],
+      [],
+    )
+  }
   let row_ptr : Array[Int] = Array::make(nrows + 1, 0)
   for k = 0; k < nnz; k = k + 1 {
     row_ptr[row_idx[k] + 1] = row_ptr[row_idx[k] + 1] + 1
