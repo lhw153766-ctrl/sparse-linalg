@@ -252,6 +252,27 @@ pub fn CholeskyFactor::new(
 }
 
 ///|
+/// Factorise, verifying first that the matrix really is symmetric.
+///
+/// The symmetry check is a pass over the stored entries with a binary search
+/// each, which is negligible next to the factorisation itself and removes the
+/// silent failure mode `new` has. Use this unless the matrix is known
+/// symmetric or only one triangle is stored.
+pub fn CholeskyFactor::new_checked(
+  a : @csr.Csr[Double],
+) -> CholeskyFactor raise @err.SparseError {
+  if a.nrows() != a.ncols() {
+    raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
+  }
+  if !a.is_symmetric() {
+    raise @err.SparseError::UnsupportedMatrix(
+      "CholeskyFactor::new_checked: the matrix is not symmetric, so a Cholesky factor of it does not exist",
+    )
+  }
+  CholeskyFactor::new(a)
+}
+
+///|
 /// Solve `A x = b` using the factorisation, by a forward solve with `L` and a
 /// backward solve with `L^T`.
 pub fn CholeskyFactor::solve(

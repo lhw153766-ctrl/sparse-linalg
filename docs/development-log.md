@@ -199,11 +199,12 @@ What that means for anyone reviewing this:
 - The iterative solvers have no restart strategy beyond GMRES's fixed restart,
   and no deflation. On a matrix with a few outlier eigenvalues they will be
   slow, and the caller has to notice and switch preconditioner.
-- `CholeskyFactor` reads only the upper triangle of `A` and does not verify
-  symmetry. A caller who passes an asymmetric matrix gets a factor of its
-  symmetric part, silently. Checking would cost a pass over the entries; the
-  current choice is documented in the package and asserted by a test, but it is
-  a sharp edge.
+- `CholeskyFactor::new` reads only the upper triangle of `A` and does not
+  verify symmetry: a caller who passes an asymmetric matrix gets the factor of
+  its symmetric part, silently. That is deliberate — a caller holding one
+  triangle should not be forced to store both — and `new_checked` verifies
+  symmetry first for a caller who is not sure. The sharp edge is that `new` is
+  the shorter name.
 - The reordering and PageRank routines pick their starting vertex by a linear
   scan for the minimum degree, which is `O(n)` per connected component. That is
   fine for the sizes in the examples and would need a bucket queue to scale.

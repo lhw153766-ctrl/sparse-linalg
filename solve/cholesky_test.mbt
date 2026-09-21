@@ -312,3 +312,74 @@ test "the 2x2 grid stencil factor solves its own system" {
   let x = @solve.solve_cholesky(a, b)
   inspect(@solve.relative_residual(a, x, b) <= 1.0e-14, content="true")
 }
+
+///|
+test "new_checked rejects an asymmetric matrix that new would accept" {
+  // The upper triangle including the diagonal is [[4, 1], [1, 3]], which is
+  // positive definite, but the stored (1,0) is 7 rather than 1, so the matrix
+  // is not symmetric. `new` reads only the upper triangle and factors the
+  // symmetric part without complaining.
+  let asym : @csr.Csr[Double] = @csr.Csr::new(2, 2, [0, 2, 4], [0, 1, 0, 1], [
+    4.0, 1.0, 7.0, 3.0,
+  ])
+  inspect(asym.is_symmetric(), content="false")
+  let permissive = @solve.CholeskyFactor::new(asym)
+  debug_inspect(permissive.reconstruct(), content="[4, 1, 1, 3]")
+  // The checked constructor refuses.
+  let rejected = try {
+    let _ = @solve.CholeskyFactor::new_checked(asym)
+    false
+  } catch {
+    _ => true
+  }
+  inspect(rejected, content="true")
+}
+
+///|
+test "new_checked accepts a symmetric matrix and agrees with new" {
+  let a = chol_spd2()
+  let checked = @solve.CholeskyFactor::new_checked(a)
+  let plain = @solve.CholeskyFactor::new(a)
+  inspect(checked.nnz(), content=plain.nnz().to_string())
+  for i = 0; i < checked.nnz(); i = i + 1 {
+    inspect(checked.vals()[i], content=plain.vals()[i].to_string())
+  }
+}
+
+///|
+test "new_checked accepts a matrix stored as one triangle" {
+  // Only the upper triangle plus the diagonal is present. `is_symmetric`
+  // requires both mirrors, so this is rejected — and that is the honest
+  // outcome: the check cannot tell a deliberately triangular matrix from a
+  // wrongly assembled one.
+  let upper : @csr.Csr[Double] = @csr.Csr::new(2, 2, [0, 2, 3], [0, 1, 1], [
+    4.0, 1.0, 3.0,
+  ])
+  let rejected = try {
+    let _ = @solve.CholeskyFactor::new_checked(upper)
+    false
+  } catch {
+    _ => true
+  }
+  inspect(rejected, content="true")
+  // `new` still handles it, which is why it remains the entry point for a
+  // caller who knows the matrix is symmetric.
+  debug_inspect(
+    @solve.CholeskyFactor::new(upper).reconstruct(),
+    content="[4, 1, 1, 3]",
+  )
+}
+
+///|
+test "new_checked rejects a non-square matrix" {
+  let rect : @csr.Csr[Double] = @csr.Csr::new(2, 3, [0, 1, 2], [0, 1], [
+    1.0, 1.0,
+  ])
+  let rejected = try {
+    let _ = @solve.CholeskyFactor::new_checked(rect)
+    false
+  } catch {
+    _ => true
+  }
+  inspect(rejected, content="true")
+}

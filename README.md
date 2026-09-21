@@ -94,10 +94,14 @@ holds the best iterate reached.
 Direct factorisation, when the matrix is symmetric positive definite:
 
 ```moonbit
-let factor = @solve.CholeskyFactor::new(a)
+let factor = @solve.CholeskyFactor::new_checked(a)
 let x = factor.solve(b)
 println(factor.log_determinant())
 ```
+
+`new_checked` verifies symmetry first. `new` skips that check, which is what a
+caller holding only one triangle wants and what a caller who is not sure does
+not.
 
 ### Reorder before factorising
 
