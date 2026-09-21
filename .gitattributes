@@ -1,0 +1,6 @@
+# Keep one line ending in the repository and in every checkout, so that
+# `moon fmt --check` behaves identically on Linux, macOS and Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,13 @@
+.DS_Store
+
+# Build outputs and caches
+_build/
+target/
+target
+.mooncakes/
+.moonagent/
+
+# Generated public interfaces. `moon info` writes one per package; they are
+# build outputs, not sources.
+pkg.generated.mbti
+**/pkg.generated.mbti
