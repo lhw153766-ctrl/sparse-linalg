@@ -237,6 +237,12 @@ Three kinds of test are used, and the distinction matters:
 
 `moon check --deny-warn` is clean.
 
+The published artifact was checked separately from the working tree: version
+0.1.0 was installed into a fresh project from the registry, and a test there
+resolved the imports through the download and solved a system with both the
+direct and the iterative solver. Presence in the registry is not the same as
+being installable.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
