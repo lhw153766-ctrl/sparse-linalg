@@ -133,6 +133,14 @@ parser then read the size line as a header. Every coordinate-format test failed
 with "header needs five fields". The banner is now taken off the front before
 comments are dropped.
 
+**The closure algorithm in my own test was wrong.** The first version of the
+semiring tests accumulated the powers `A, A^2, A^4, A^8` and called that a
+transitive closure. It is not: it covers only path lengths that are powers of
+two, so the three-step cycle `a -> b -> c -> a` is missed and vertex `a` appears
+not to reach itself. Squaring the *accumulated* relation is what works. The
+library was right and the test was wrong, and the corrected test now says so in
+a comment.
+
 **Two test expectations were wrong, not the code.** Worth recording because it
 cuts the other way: on the fill-in test the expected count of 13 was wrong
 because the comparison was against the wrong baseline — `A` stores both
@@ -142,6 +150,25 @@ plain CG would converge was wrong: it stalls at 2.2e-10, which is the double
 precision floor for that condition number. Both tests were rewritten to assert
 what is actually true, and the second one became a better test — it now asserts
 that Jacobi reaches a residual plain CG cannot.
+
+## Toolchain findings worth writing down
+
+Three things about this toolchain cost real time and are not documented in the
+places I looked. They are recorded here because the next person will hit them.
+
+- **A trait implementation needs an explicit `pub` to be visible outside its own
+  package.** Without it the implementation works inside the defining package and
+  fails to resolve everywhere else, and the error says only that the type does
+  not implement the trait. I lost an hour to this before finding `pub impl` in a
+  generated interface.
+- **A tuple struct does not pick up a core trait implementation.** `struct W(Double)`
+  with `impl Add for W` does not resolve, while `struct W { v : Double }` does.
+- **A struct literal needs a trailing comma or it parses as a block.**
+  `{ v }` is ambiguous; `{ v, }` is a struct.
+
+Two of these were found by building the semiring package, which exists partly to
+make the genericity claim testable. That was worth doing for its own sake: the
+claim would have been false as first written, and only running it showed that.
 
 ## Verification strategy
 

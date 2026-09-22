@@ -3,3 +3,7 @@ import {
   "lhw153766-ctrl/sparse-linalg/csr",
   "lhw153766-ctrl/sparse-linalg/csc",
 }
+
+import {
+  "moonbitlang/core/bench",
+} for "test"

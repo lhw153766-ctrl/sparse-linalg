@@ -32,8 +32,9 @@ are in place; the API may still change before 0.2.0.
 | `reorder` | Reverse Cuthill-McKee, bandwidth and profile measurement |
 | `io` | Matrix Market (`.mtx`) reading and writing |
 | `graph` | Degree, adjacency construction, Laplacians, connected components, PageRank |
+| `semiring` | `BoolSemiring` and `MinPlus`, which turn the same product into reachability or shortest paths |
 
-4,600 lines of MoonBit, plus 3,300 lines of tests.
+4,900 lines of MoonBit, plus 3,600 lines of tests.
 
 ## Install
 
@@ -151,6 +152,7 @@ checked by eye:
 ```
 moon run examples/poisson
 moon run examples/reordering
+moon run examples/reachability
 moon run examples/pagerank
 moon run examples/matrix_market
 ```
@@ -216,7 +218,7 @@ moon test  --target all
 moon fmt --check
 ```
 
-202 tests, passing on `wasm`, `wasm-gc`, `js` and `native`. CI runs the same
+213 tests, passing on `wasm`, `wasm-gc`, `js` and `native`. CI runs the same
 commands on Linux, macOS and Windows.
 
 Three kinds of test are used, and the distinction matters:
@@ -242,6 +244,39 @@ The published artifact was checked separately from the working tree: version
 resolved the imports through the download and solved a system with both the
 direct and the iterative solver. Presence in the registry is not the same as
 being installable.
+
+## One product, several algorithms
+
+The storage and the products are generic over the scalar type, which is not a
+cosmetic choice: it is what lets the same `spgemm` compute different things.
+
+```moonbit
+// Reachability: over the Boolean semiring, add is OR and multiply is AND.
+let closure = @ops.spgemm(adjacency, adjacency)
+
+// Shortest paths: over min-plus, add is min and multiply is plus.
+let distances = @ops.spgemm(weights, weights)
+```
+
+`examples/reachability` runs both over the same code and prints the results. On
+its graph the closure finds that going from `a` to `d` costs 4 via `b` and `c`,
+against 9 for the direct edge. The `Int64` path keeps exact integer assembly.
+
+## How this relates to the existing MoonBit sparse code
+
+There is an existing sparse implementation in the ecosystem:
+`hsy-bit/moonbit-circuit-solver/src/linalg`, the numerical backend of a SPICE
+circuit simulator. It overlaps with this project in the solver core — CSR
+storage and the sparse product, conjugate gradient, BiCGSTAB, GMRES, ILU(0),
+sparse Cholesky, reverse Cuthill-McKee, and Matrix Market.
+
+The boundary is set out capability by capability in
+[COMPARISON.md](COMPARISON.md). In short: this project adds column storage and
+the transposed product, the sparse-sparse and sparse-dense products, genericity
+over the scalar type with two semirings, and a graph layer — none of which the
+other library has. The other library has sparse LU with Markowitz pivoting,
+TFQMR, MINRES, incomplete Cholesky, block Jacobi and SSOR preconditioning, and
+SOR, none of which this project has.
 
 ## License
 
