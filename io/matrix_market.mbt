@@ -231,6 +231,10 @@ pub fn parse_matrix_market_full(
   }
   let declared_nnz = if is_coordinate {
     require_int(size[2], "the entry count")
+  } else if header.symmetry == "symmetric" {
+    nrows * (nrows + 1) / 2
+  } else if header.symmetry == "skew-symmetric" {
+    nrows * (nrows - 1) / 2
   } else {
     nrows * ncols
   }
@@ -274,37 +278,87 @@ pub fn parse_matrix_market_full(
       add_entry(coo, i, j, v, header.symmetry)
     }
   } else {
-    // Array format: every entry of the matrix, in column-major order, and no
-    // index columns. Symmetry is not meaningful here.
-    if header.symmetry != "general" {
+    // Array format: dense entries in column-major order.
+    // For symmetric matrices, only the lower triangular entries (i >= j) are stored.
+    // For skew-symmetric matrices, only the strictly lower triangular entries (i > j) are stored.
+    if header.field == "pattern" {
+      raise parse_error("pattern field is not valid for array format")
+    }
+    let expected = if header.symmetry == "symmetric" {
+      if nrows != ncols {
+        raise parse_error(
+          "symmetric array matrix must be square, got " +
+          nrows.to_string() +
+          "x" +
+          ncols.to_string(),
+        )
+      }
+      nrows * (nrows + 1) / 2
+    } else if header.symmetry == "skew-symmetric" {
+      if nrows != ncols {
+        raise parse_error(
+          "skew-symmetric array matrix must be square, got " +
+          nrows.to_string() +
+          "x" +
+          ncols.to_string(),
+        )
+      }
+      nrows * (nrows - 1) / 2
+    } else if header.symmetry == "general" {
+      nrows * ncols
+    } else {
       raise parse_error(
-        "array format cannot carry symmetry '" + header.symmetry + "'",
+        "array format does not support symmetry '" + header.symmetry + "'",
       )
     }
-    let has_value = header.field != "pattern"
-    let expected = nrows * ncols
-    let available = lines.length() - 1
-    if available < expected {
+    let tokens : Array[String] = Array(capacity=expected)
+    for k = 1; k < lines.length(); k = k + 1 {
+      let fields = split_fields(normalise_separators(lines[k]))
+      for f in fields {
+        tokens.push(f)
+      }
+    }
+    if tokens.length() < expected {
       raise parse_error(
         "array format needs " +
         expected.to_string() +
         " values but the file has " +
-        available.to_string(),
+        tokens.length().to_string(),
       )
     }
-    for j = 0; j < ncols; j = j + 1 {
-      for i = 0; i < nrows; i = i + 1 {
-        let line = lines[1 + j * nrows + i]
-        let v = if has_value {
-          require_double(
-            split_fields(normalise_separators(line))[0],
-            "an entry value",
-          )
-        } else {
-          1.0
+    let mut token_idx = 0
+    if header.symmetry == "symmetric" {
+      for j = 0; j < ncols; j = j + 1 {
+        for i = j; i < nrows; i = i + 1 {
+          let v = require_double(tokens[token_idx], "an entry value")
+          token_idx = token_idx + 1
+          if v != 0.0 {
+            coo.push(i, j, v)
+            if i != j {
+              coo.push(j, i, v)
+            }
+          }
         }
-        if v != 0.0 {
-          coo.push(i, j, v)
+      }
+    } else if header.symmetry == "skew-symmetric" {
+      for j = 0; j < ncols; j = j + 1 {
+        for i = j + 1; i < nrows; i = i + 1 {
+          let v = require_double(tokens[token_idx], "an entry value")
+          token_idx = token_idx + 1
+          if v != 0.0 {
+            coo.push(i, j, v)
+            coo.push(j, i, -v)
+          }
+        }
+      }
+    } else {
+      for j = 0; j < ncols; j = j + 1 {
+        for i = 0; i < nrows; i = i + 1 {
+          let v = require_double(tokens[token_idx], "an entry value")
+          token_idx = token_idx + 1
+          if v != 0.0 {
+            coo.push(i, j, v)
+          }
         }
       }
     }

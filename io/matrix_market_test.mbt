@@ -374,11 +374,65 @@ test "complex and hermitian inputs are refused rather than silently truncated" {
 }
 
 ///|
-test "array format cannot claim symmetry" {
+test "parse array symmetric matrix in column-major order" {
+  let text = "%%MatrixMarket matrix array real symmetric\n3 3\n1.0\n2.0\n3.0\n4.0\n5.0\n6.0\n"
+  let file = @io.parse_matrix_market_full(text)
+  inspect(file.declared_rows, content="3")
+  inspect(file.declared_cols, content="3")
+  inspect(file.declared_nnz, content="6")
+  let csr = file.matrix.to_csr()
+  inspect(csr.is_symmetric(), content="true")
+  // Column 0: (0,0)=1, (1,0)=2, (2,0)=3
+  // Column 1: (1,1)=4, (2,1)=5
+  // Column 2: (2,2)=6
+  debug_inspect(csr.to_dense(), content="[1, 2, 3, 2, 4, 5, 3, 5, 6]")
+}
+
+///|
+test "parse array symmetric with multiple entries per line" {
+  let text = "%%MatrixMarket matrix array real symmetric\n3 3\n1.0 2.0 3.0\n4.0 5.0\n6.0\n"
+  let a = @io.parse_matrix_market(text)
+  let csr = a.to_csr()
+  debug_inspect(csr.to_dense(), content="[1, 2, 3, 2, 4, 5, 3, 5, 6]")
+}
+
+///|
+test "parse array integer symmetric matrix" {
+  let text = "%%MatrixMarket matrix array integer symmetric\n2 2\n10\n20\n30\n"
+  let a = @io.parse_matrix_market(text)
+  let csr = a.to_csr()
+  debug_inspect(csr.to_dense(), content="[10, 20, 20, 30]")
+  inspect(csr.is_symmetric(), content="true")
+}
+
+///|
+test "parse array skew-symmetric matrix" {
+  let text = "%%MatrixMarket matrix array real skew-symmetric\n3 3\n2.0\n3.0\n5.0\n"
+  let file = @io.parse_matrix_market_full(text)
+  inspect(file.declared_nnz, content="3")
+  let csr = file.matrix.to_csr()
+  // Col 0: (1,0)=2, (2,0)=3; Col 1: (2,1)=5; diagonal is 0
+  debug_inspect(csr.to_dense(), content="[0, -2, -3, 2, 0, -5, 3, 5, 0]")
+}
+
+///|
+test "array format rejects non-square symmetric matrix" {
   inspect(
     raises(() => {
       let _ = @io.parse_matrix_market(
-        "%%MatrixMarket matrix array real symmetric\n2 2\n1.0\n2.0\n3.0\n4.0\n",
+        "%%MatrixMarket matrix array real symmetric\n2 3\n1.0\n2.0\n3.0\n",
+      )
+    }),
+    content="true",
+  )
+}
+
+///|
+test "array format rejects pattern field" {
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(
+        "%%MatrixMarket matrix array pattern general\n2 2\n1\n1\n1\n1\n",
       )
     }),
     content="true",

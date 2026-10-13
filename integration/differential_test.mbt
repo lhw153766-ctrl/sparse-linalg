@@ -391,6 +391,54 @@ test "the laplacian of a random graph matches its dense construction" {
 }
 
 ///|
+test "the normalized laplacian of a random weighted graph matches its dense construction" {
+  let rng = @integration.Rng::new(37)
+  for trial = 0; trial < 10; trial = trial + 1 {
+    let n = 3 + rng.below(6)
+    let edges : Array[(Int, Int, Double)] = Array(capacity=2 * n)
+    for _e = 0; _e < 2 * n; _e = _e + 1 {
+      let u = rng.below(n)
+      let v = rng.below(n)
+      let w = rng.uniform(0.5, 5.0)
+      edges.push((u, v, w))
+    }
+    let adjacency = @graph.weighted_adjacency_from_edges(n, edges)
+    let nl = @graph.normalized_laplacian(adjacency)
+    let dense_a = adjacency.to_dense()
+    let deg : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let mut s = 0.0
+      for j = 0; j < n; j = j + 1 {
+        if i != j {
+          s = s + dense_a[i * n + j]
+        }
+      }
+      deg[i] = s
+    }
+    let inv_sqrt : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      if deg[i] > 0.0 {
+        inv_sqrt[i] = 1.0 / Double::sqrt(deg[i])
+      }
+    }
+    let expected : Array[Double] = Array::make(n * n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      for j = 0; j < n; j = j + 1 {
+        if i == j {
+          expected[i * n + j] = 1.0
+        } else {
+          expected[i * n + j] = -dense_a[i * n + j] * inv_sqrt[i] * inv_sqrt[j]
+        }
+      }
+    }
+    let actual = nl.to_dense()
+    for i = 0; i < n * n; i = i + 1 {
+      inspect(close(actual[i], expected[i], 1.0e-14), content="true")
+    }
+  }
+}
+
+///|
 test "matrix market round trips through the dense reference" {
   let rng = @integration.Rng::new(41)
   for trial = 0; trial < 10; trial = trial + 1 {

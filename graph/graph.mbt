@@ -33,6 +33,27 @@ pub fn degree(a : @csr.Csr[Double]) -> Array[Int] {
 }
 
 ///|
+/// Weighted degree of every vertex: the sum of edge weights in each row, with
+/// the diagonal excluded.
+pub fn weighted_degree(a : @csr.Csr[Double]) -> Array[Double] {
+  let n = a.nrows()
+  let rp = a.row_ptr()
+  let ci = a.col_idx()
+  let va = a.vals()
+  let out : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let mut sum = 0.0
+    for k = rp[i]; k < rp[i + 1]; k = k + 1 {
+      if ci[k] != i {
+        sum = sum + va[k]
+      }
+    }
+    out[i] = sum
+  }
+  out
+}
+
+///|
 /// Build a symmetric adjacency matrix from an undirected edge list.
 ///
 /// Each edge is added in both directions. Repeated edges are summed by the
@@ -141,20 +162,25 @@ pub fn normalized_laplacian(
   if a.nrows() != a.ncols() {
     raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
   }
+  if !a.is_symmetric() {
+    raise @err.SparseError::UnsupportedMatrix(
+      "normalized_laplacian: the adjacency matrix is not symmetric",
+    )
+  }
   let n = a.nrows()
-  let d = degree(a)
+  let d = weighted_degree(a)
   let inv_sqrt : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    if d[i] > 0 {
-      inv_sqrt[i] = 1.0 / Double::sqrt(d[i].to_double())
+    if d[i] > 0.0 {
+      inv_sqrt[i] = 1.0 / Double::sqrt(d[i])
     }
   }
   let rp = a.row_ptr()
   let ci = a.col_idx()
   let va = a.vals()
   let row_ptr : Array[Int] = Array(capacity=n + 1)
-  let col_idx : Array[Int] = Array(capacity=a.nnz())
-  let vals : Array[Double] = Array(capacity=a.nnz())
+  let col_idx : Array[Int] = Array(capacity=a.nnz() + n)
+  let vals : Array[Double] = Array(capacity=a.nnz() + n)
   row_ptr.push(0)
   for i = 0; i < n; i = i + 1 {
     let mut inserted = false

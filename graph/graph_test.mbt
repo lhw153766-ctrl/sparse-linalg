@@ -168,6 +168,24 @@ test "normalized laplacian of a single edge" {
 }
 
 ///|
+test "normalized laplacian of a weighted edge uses weighted degree" {
+  let a = @graph.weighted_adjacency_from_edges(2, [(0, 1, 3.0)])
+  let nl = @graph.normalized_laplacian(a)
+  // For two vertices connected by an edge of weight 3, D = diag(3, 3),
+  // D^(-1/2) A D^(-1/2) has off-diagonal 3 / (sqrt(3)*sqrt(3)) = 1,
+  // yielding [[1, -1], [-1, 1]].
+  inspect(Double::abs(nl.get_or(0, 1, 0.0) + 1.0) < 1.0e-15, content="true")
+  inspect(Double::abs(nl.get_or(1, 0, 0.0) + 1.0) < 1.0e-15, content="true")
+  debug_inspect(nl.diagonal(), content="[1, 1]")
+}
+
+///|
+test "weighted degree computes sum of edge weights" {
+  let a = @graph.weighted_adjacency_from_edges(3, [(0, 1, 2.5), (1, 2, 4.0)])
+  debug_inspect(@graph.weighted_degree(a), content="[2.5, 6.5, 4]")
+}
+
+///|
 test "an isolated vertex has a zero-degree row" {
   // Vertex 2 has no edges.
   let a = @graph.adjacency_from_edges(3, [(0, 1)])
