@@ -152,12 +152,15 @@ pub fn laplacian(
 }
 
 ///|
-/// The symmetric normalized Laplacian `L = S (D - A) S`.
+/// The symmetric normalized Laplacian `L = S (D - A0) S`, where `A0` is the
+/// adjacency matrix with self-loops removed.
 ///
 /// For vertices with positive degree, `S_ii = 1 / sqrt(d_i)`, yielding diagonal 1.
+/// Self-loops are ignored in degree computation and off-diagonal entries.
 /// When `isolated_zero` is true (the default matching SciPy and NetworkX), isolated
 /// vertices (`d_i == 0`) have diagonal 0 so that zero eigenvalue multiplicity equals
-/// the number of connected components. Set `isolated_zero = false` to assign 1 to all diagonals.
+/// the number of connected components for graphs with positive edge weights.
+/// Set `isolated_zero = false` to assign 1 to all diagonals.
 pub fn normalized_laplacian(
   a : @csr.Csr[Double],
   isolated_zero? : Bool = true,
@@ -191,10 +194,10 @@ pub fn normalized_laplacian(
       )
     }
   }
-  let inv_sqrt : Array[Double] = Array::make(n, 0.0)
+  let sqrt_d : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     if d[i] > 0.0 {
-      inv_sqrt[i] = 1.0 / Double::sqrt(d[i])
+      sqrt_d[i] = Double::sqrt(d[i])
     }
   }
   let rp = a.row_ptr()
@@ -214,13 +217,21 @@ pub fn normalized_laplacian(
       if j == i {
         continue
       }
+      let w = va[k]
+      if w == 0.0 {
+        continue
+      }
       if !inserted && j > i {
         col_idx.push(i)
         vals.push(1.0)
         inserted = true
       }
+      let sqrt_w = Double::sqrt(w)
+      let s_i = sqrt_w / sqrt_d[i]
+      let s_j = sqrt_w / sqrt_d[j]
+      let val = if i <= j { -(s_i * s_j) } else { -(s_j * s_i) }
       col_idx.push(j)
-      vals.push(-va[k] * inv_sqrt[i] * inv_sqrt[j])
+      vals.push(val)
     }
     if !inserted {
       col_idx.push(i)
@@ -235,11 +246,13 @@ pub fn normalized_laplacian(
 /// Connected component label per vertex, from a symmetric adjacency matrix.
 ///
 /// Labels are assigned in the order components are discovered, starting at 0.
+/// Only edges with strictly positive weight connect vertices.
 pub fn connected_components(a : @csr.Csr[Double]) -> Array[Int] {
   let n = a.nrows()
   let labels : Array[Int] = Array::make(n, -1)
   let rp = a.row_ptr()
   let ci = a.col_idx()
+  let va = a.vals()
   let mut component = 0
   for start = 0; start < n; start = start + 1 {
     if labels[start] >= 0 {
@@ -256,7 +269,7 @@ pub fn connected_components(a : @csr.Csr[Double]) -> Array[Int] {
       head = head + 1
       for k = rp[u]; k < rp[u + 1]; k = k + 1 {
         let v = ci[k]
-        if labels[v] < 0 {
+        if v != u && va[k] > 0.0 && labels[v] < 0 {
           labels[v] = component
           queue.push(v)
         }
@@ -319,6 +332,15 @@ pub fn page_rank(
   let rp = a.row_ptr()
   let ci = a.col_idx()
   let va = a.vals()
+  for k = 0; k < va.length(); k = k + 1 {
+    let w = va[k]
+    if !(w >= 0.0 && w <= 1.7976931348623157e308) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "page_rank: edge weights must be finite and non-negative, got " +
+        w.to_string(),
+      )
+    }
+  }
   // Out-weight of each vertex, and whether it is dangling.
   let out_weight : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {

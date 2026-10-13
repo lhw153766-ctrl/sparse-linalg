@@ -41,6 +41,18 @@ pub fn[F] Coo::empty(nrows : Int, ncols : Int) -> Coo[F] raise @err.SparseError 
       ncols.to_string(),
     )
   }
+  let max_dim = 100_000_000
+  if nrows > max_dim ||
+    ncols > max_dim ||
+    nrows >= 2147483647 ||
+    ncols >= 2147483647 {
+    raise @err.SparseError::DimensionMismatch(
+      "Coo::empty: dimension exceeds maximum supported size: " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string(),
+    )
+  }
   { nrows, ncols, rows: [], cols: [], vals: [], }
 }
 
@@ -56,6 +68,18 @@ pub fn[F] Coo::new(
   if nrows < 0 || ncols < 0 {
     raise @err.SparseError::DimensionMismatch(
       "Coo::new: negative shape " + nrows.to_string() + "x" + ncols.to_string(),
+    )
+  }
+  let max_dim = 100_000_000
+  if nrows > max_dim ||
+    ncols > max_dim ||
+    nrows >= 2147483647 ||
+    ncols >= 2147483647 {
+    raise @err.SparseError::DimensionMismatch(
+      "Coo::new: dimension exceeds maximum supported size: " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string(),
     )
   }
   if rows.length() != cols.length() || rows.length() != vals.length() {
@@ -136,19 +160,22 @@ pub fn[F] Coo::shape(self : Coo[F]) -> @err.Shape {
 }
 
 ///|
-/// Read-only view of the row indices.
+/// Direct access to the underlying row indices array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Coo::rows(self : Coo[F]) -> Array[Int] {
   self.rows
 }
 
 ///|
-/// Read-only view of the column indices.
+/// Direct access to the underlying column indices array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Coo::cols(self : Coo[F]) -> Array[Int] {
   self.cols
 }
 
 ///|
-/// Read-only view of the values.
+/// Direct access to the underlying values array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Coo::vals(self : Coo[F]) -> Array[F] {
   self.vals
 }
@@ -230,7 +257,8 @@ priv struct Slot[F] {
 /// Convert to CSR, summing duplicate coordinates and sorting each row.
 ///
 /// The result satisfies every invariant `Csr::new` checks, so it is built with
-/// `Csr::new_unchecked`.
+/// `Csr::new_unchecked`. Matrix dimensions are guaranteed to be within valid
+/// bounds by the Coo constructors.
 pub fn[F : Add] Coo::to_csr(self : Coo[F]) -> @csr.Csr[F] {
   let nnz = self.vals.length()
   // 1. count entries per row

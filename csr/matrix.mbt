@@ -39,6 +39,18 @@ pub fn[F] Csr::new(
       "Csr::new: negative shape " + nrows.to_string() + "x" + ncols.to_string(),
     )
   }
+  let max_dim = 100_000_000
+  if nrows > max_dim ||
+    ncols > max_dim ||
+    nrows >= 2147483647 ||
+    ncols >= 2147483647 {
+    raise @err.SparseError::DimensionMismatch(
+      "Csr::new: dimension exceeds maximum supported size: " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string(),
+    )
+  }
   if row_ptr.length() != nrows + 1 {
     raise @err.SparseError::DimensionMismatch(
       "Csr::new: row_ptr has length " +
@@ -129,19 +141,22 @@ pub fn[F] Csr::shape(self : Csr[F]) -> @err.Shape {
 }
 
 ///|
-/// Read-only view of the row pointer array.
+/// Direct access to the underlying row pointer array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Csr::row_ptr(self : Csr[F]) -> Array[Int] {
   self.row_ptr
 }
 
 ///|
-/// Read-only view of the column index array.
+/// Direct access to the underlying column index array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Csr::col_idx(self : Csr[F]) -> Array[Int] {
   self.col_idx
 }
 
 ///|
-/// Read-only view of the value array.
+/// Direct access to the underlying value array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Csr::vals(self : Csr[F]) -> Array[F] {
   self.vals
 }

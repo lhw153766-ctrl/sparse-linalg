@@ -13,6 +13,7 @@
 // dimension checks being wrapped are O(1).
 
 // The 5-point stencil on a k x k grid, as CSR arrays.
+
 ///|
 fn bench_grid(k : Int) -> @csr.Csr[Double] {
   let n = k * k

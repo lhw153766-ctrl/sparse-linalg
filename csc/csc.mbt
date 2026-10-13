@@ -40,6 +40,18 @@ pub fn[F] Csc::new(
       "Csc::new: negative shape " + nrows.to_string() + "x" + ncols.to_string(),
     )
   }
+  let max_dim = 100_000_000
+  if nrows > max_dim ||
+    ncols > max_dim ||
+    nrows >= 2147483647 ||
+    ncols >= 2147483647 {
+    raise @err.SparseError::DimensionMismatch(
+      "Csc::new: dimension exceeds maximum supported size: " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string(),
+    )
+  }
   if col_ptr.length() != ncols + 1 {
     raise @err.SparseError::DimensionMismatch(
       "Csc::new: col_ptr has length " +
@@ -127,19 +139,22 @@ pub fn[F] Csc::shape(self : Csc[F]) -> @err.Shape {
 }
 
 ///|
-/// Read-only view of the column pointer array.
+/// Direct access to the underlying column pointer array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Csc::col_ptr(self : Csc[F]) -> Array[Int] {
   self.col_ptr
 }
 
 ///|
-/// Read-only view of the row index array.
+/// Direct access to the underlying row index array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Csc::row_idx(self : Csc[F]) -> Array[Int] {
   self.row_idx
 }
 
 ///|
-/// Read-only view of the value array.
+/// Direct access to the underlying value array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn[F] Csc::vals(self : Csc[F]) -> Array[F] {
   self.vals
 }

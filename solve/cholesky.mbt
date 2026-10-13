@@ -43,19 +43,22 @@ pub fn CholeskyFactor::nnz(self : CholeskyFactor) -> Int {
 }
 
 ///|
-/// Read-only view of the column pointers.
+/// Direct access to the underlying column pointer array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn CholeskyFactor::col_ptr(self : CholeskyFactor) -> Array[Int] {
   self.col_ptr
 }
 
 ///|
-/// Read-only view of the row indices.
+/// Direct access to the underlying row index array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn CholeskyFactor::row_idx(self : CholeskyFactor) -> Array[Int] {
   self.row_idx
 }
 
 ///|
-/// Read-only view of the factor values.
+/// Direct access to the underlying factor values array without copying.
+/// Callers should not mutate the array to preserve internal invariants.
 pub fn CholeskyFactor::vals(self : CholeskyFactor) -> Array[Double] {
   self.vals
 }

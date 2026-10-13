@@ -7,7 +7,7 @@
 Numeric sparse linear algebra for MoonBit: compressed storage, sparse kernels,
 and solvers that work on matrices too large to store densely.
 
-Published on mooncakes.io as
+Package
 [`lhw153766-ctrl/sparse-linalg@0.1.2`](https://mooncakes.io/docs/lhw153766-ctrl/sparse-linalg).
 
 A 100,000 x 100,000 matrix with about ten non-zeros per row has 10<sup>10</sup>

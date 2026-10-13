@@ -10,6 +10,7 @@
 
 // The 5-point stencil on a k x k grid: a sparse matrix whose square is denser
 // than itself.
+
 ///|
 fn bench_grid(k : Int) -> @csr.Csr[Double] {
   let n = k * k

@@ -33,17 +33,16 @@ pub fn cg(
   initial? : Array[Double]? = None,
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
+  check_solver_options(options)
   let n = a.nrows()
   let x = starting_point(a, initial)
   let nb = norm2(b)
+  if nb.is_nan() || nb.is_inf() {
+    raise @err.SparseError::UnsupportedMatrix(
+      "cg: right-hand side norm is non-finite or overflows floating-point representation",
+    )
+  }
   if nb == 0.0 {
-    for i = 0; i < b.length(); i = i + 1 {
-      if b[i] != 0.0 {
-        raise @err.SparseError::UnsupportedMatrix(
-          "cg: right-hand side is non-zero but norm underflows floating-point representation",
-        )
-      }
-    }
     // A x = 0 is solved exactly by x = 0.
     return {
       x: Array::make(n, 0.0),
@@ -55,17 +54,39 @@ pub fn cg(
   let r = sub_vec(b, a.spmv(x))
   let first_residual = norm2(r) / nb
   if first_residual <= options.tol {
-    // The starting point already meets the tolerance. That is the point of a
-    // warm start: reusing the previous solution of a slowly changing system.
-    return { x, iterations: 0, residual: first_residual, converged: true, }
+    if is_finite_vector(x) {
+      let true_res = relative_residual(a, x, b)
+      if is_finite_val(true_res) && true_res <= options.tol {
+        return { x, iterations: 0, residual: true_res, converged: true, }
+      }
+    }
   }
   let mut z = precond.apply(r)
   let p = z.copy()
   let mut rz = dot(r, z)
   for iter = 1; iter <= options.max_iter; iter = iter + 1 {
+    if rz.is_nan() || rz.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "cg: numerical breakdown: r^T M^-1 r is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
+    if rz == 0.0 {
+      raise @err.SparseError::UnsupportedMatrix(
+        "cg: numerical breakdown: r^T M^-1 r became zero at iteration " +
+        iter.to_string() +
+        " (underflow)",
+      )
+    }
     let ap = a.spmv(p)
     let pap = dot(p, ap)
-    if !(pap > 0.0) {
+    if pap.is_nan() || pap.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "cg: numerical breakdown: p^T A p is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
+    if pap < 0.0 {
       raise @err.SparseError::UnsupportedMatrix(
         "cg: p^T A p = " +
         pap.to_string() +
@@ -74,33 +95,55 @@ pub fn cg(
         "; conjugate gradient requires a symmetric positive definite matrix",
       )
     }
+    if pap == 0.0 {
+      raise @err.SparseError::UnsupportedMatrix(
+        "cg: numerical breakdown: p^T A p became zero at iteration " +
+        iter.to_string() +
+        " (underflow)",
+      )
+    }
     let alpha = rz / pap
+    if alpha.is_nan() || alpha.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "cg: numerical breakdown: alpha is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
     axpy(alpha, p, x)
     axpy(-alpha, ap, r)
     let res = norm2(r) / nb
     if res <= options.tol {
-      return { x, iterations: iter, residual: res, converged: true, }
+      if is_finite_vector(x) {
+        let true_res = relative_residual(a, x, b)
+        if is_finite_val(true_res) && true_res <= options.tol {
+          return { x, iterations: iter, residual: true_res, converged: true, }
+        }
+      }
     }
     z = precond.apply(r)
     let rz_new = dot(r, z)
-    if rz == 0.0 {
+    let beta = rz_new / rz
+    if beta.is_nan() || beta.is_inf() {
       raise @err.SparseError::UnsupportedMatrix(
-        "cg: the iteration broke down at step " +
-        iter.to_string() +
-        " (r^T M^-1 r became zero)",
+        "cg: numerical breakdown: beta is non-finite at iteration " +
+        iter.to_string(),
       )
     }
-    let beta = rz_new / rz
     // p = z + beta * p
     for i = 0; i < n; i = i + 1 {
       p[i] = z[i] + beta * p[i]
     }
     rz = rz_new
   }
+  let final_res = relative_residual(a, x, b)
   {
     x,
     iterations: options.max_iter,
-    residual: norm2(r) / nb,
+    residual: if final_res.is_nan() {
+      norm2(r) / nb
+    } else {
+      final_res
+    },
     converged: false,
   }
 }
@@ -119,17 +162,16 @@ pub fn bicgstab(
   initial? : Array[Double]? = None,
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
+  check_solver_options(options)
   let n = a.nrows()
   let x = starting_point(a, initial)
   let nb = norm2(b)
+  if nb.is_nan() || nb.is_inf() {
+    raise @err.SparseError::UnsupportedMatrix(
+      "bicgstab: right-hand side norm is non-finite or overflows floating-point representation",
+    )
+  }
   if nb == 0.0 {
-    for i = 0; i < b.length(); i = i + 1 {
-      if b[i] != 0.0 {
-        raise @err.SparseError::UnsupportedMatrix(
-          "bicgstab: right-hand side is non-zero but norm underflows floating-point representation",
-        )
-      }
-    }
     return {
       x: Array::make(n, 0.0),
       iterations: 0,
@@ -140,7 +182,12 @@ pub fn bicgstab(
   let r = sub_vec(b, a.spmv(x))
   let first_residual = norm2(r) / nb
   if first_residual <= options.tol {
-    return { x, iterations: 0, residual: first_residual, converged: true, }
+    if is_finite_vector(x) {
+      let true_res = relative_residual(a, x, b)
+      if is_finite_val(true_res) && true_res <= options.tol {
+        return { x, iterations: 0, residual: true_res, converged: true, }
+      }
+    }
   }
   let r_hat = r.copy()
   let mut p : Array[Double] = Array::make(n, 0.0)
@@ -150,11 +197,17 @@ pub fn bicgstab(
   let mut omega = 1.0
   for iter = 1; iter <= options.max_iter; iter = iter + 1 {
     let rho = dot(r_hat, r)
+    if rho.is_nan() || rho.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "bicgstab: numerical breakdown: rho is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
     if rho == 0.0 {
       raise @err.SparseError::UnsupportedMatrix(
-        "bicgstab: the iteration broke down at step " +
+        "bicgstab: numerical breakdown: rho became zero at iteration " +
         iter.to_string() +
-        " (rho became zero)",
+        " (underflow)",
       )
     }
     if iter == 1 {
@@ -162,12 +215,23 @@ pub fn bicgstab(
     } else {
       if omega == 0.0 {
         raise @err.SparseError::UnsupportedMatrix(
-          "bicgstab: the iteration broke down at step " +
-          iter.to_string() +
-          " (omega became zero)",
+          "bicgstab: numerical breakdown: omega became zero at iteration " +
+          iter.to_string(),
+        )
+      }
+      if !is_finite_val(omega) {
+        raise @err.SparseError::UnsupportedMatrix(
+          "bicgstab: numerical breakdown: omega is non-finite at iteration " +
+          iter.to_string(),
         )
       }
       let beta = rho / rho_old * (alpha / omega)
+      if !is_finite_val(beta) {
+        raise @err.SparseError::UnsupportedMatrix(
+          "bicgstab: numerical breakdown: beta is non-finite at iteration " +
+          iter.to_string(),
+        )
+      }
       // p = r + beta * (p - omega * v)
       for i = 0; i < n; i = i + 1 {
         p[i] = r[i] + beta * (p[i] - omega * v[i])
@@ -176,32 +240,65 @@ pub fn bicgstab(
     let p_hat = precond.apply(p)
     v = a.spmv(p_hat)
     let rhv = dot(r_hat, v)
+    if rhv.is_nan() || rhv.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "bicgstab: numerical breakdown: r_hat^T v is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
     if rhv == 0.0 {
       raise @err.SparseError::UnsupportedMatrix(
-        "bicgstab: the iteration broke down at step " +
-        iter.to_string() +
-        " (r_hat^T v became zero)",
+        "bicgstab: numerical breakdown: r_hat^T v became zero at iteration " +
+        iter.to_string(),
       )
     }
     alpha = rho / rhv
+    if !is_finite_val(alpha) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "bicgstab: numerical breakdown: alpha is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
     // s = r - alpha * v
     let s = sub_vec(r, scaled(alpha, v))
     let s_norm = norm2(s) / nb
     if s_norm <= options.tol {
-      axpy(alpha, p_hat, x)
-      return { x, iterations: iter, residual: s_norm, converged: true, }
+      let x_cand = x.copy()
+      axpy(alpha, p_hat, x_cand)
+      if is_finite_vector(x_cand) {
+        let true_res = relative_residual(a, x_cand, b)
+        if is_finite_val(true_res) && true_res <= options.tol {
+          return {
+            x: x_cand,
+            iterations: iter,
+            residual: true_res,
+            converged: true,
+          }
+        }
+      }
     }
     let s_hat = precond.apply(s)
     let t = a.spmv(s_hat)
     let tt = dot(t, t)
+    if tt.is_nan() || tt.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "bicgstab: numerical breakdown: t^T t is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
     if tt == 0.0 {
       raise @err.SparseError::UnsupportedMatrix(
-        "bicgstab: the iteration broke down at step " +
-        iter.to_string() +
-        " (t became zero)",
+        "bicgstab: numerical breakdown: t^T t became zero at iteration " +
+        iter.to_string(),
       )
     }
     omega = dot(t, s) / tt
+    if !is_finite_val(omega) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "bicgstab: numerical breakdown: omega is non-finite at iteration " +
+        iter.to_string(),
+      )
+    }
     // x += alpha * p_hat + omega * s_hat
     for i = 0; i < n; i = i + 1 {
       x[i] = x[i] + alpha * p_hat[i] + omega * s_hat[i]
@@ -212,14 +309,24 @@ pub fn bicgstab(
     }
     let res = norm2(r) / nb
     if res <= options.tol {
-      return { x, iterations: iter, residual: res, converged: true, }
+      if is_finite_vector(x) {
+        let true_res = relative_residual(a, x, b)
+        if is_finite_val(true_res) && true_res <= options.tol {
+          return { x, iterations: iter, residual: true_res, converged: true, }
+        }
+      }
     }
     rho_old = rho
   }
+  let final_res = relative_residual(a, x, b)
   {
     x,
     iterations: options.max_iter,
-    residual: norm2(r) / nb,
+    residual: if final_res.is_nan() {
+      norm2(r) / nb
+    } else {
+      final_res
+    },
     converged: false,
   }
 }
@@ -243,6 +350,14 @@ fn starting_point(
           a.nrows().to_string(),
         )
       }
+      for i = 0; i < x0.length(); i = i + 1 {
+        let v = x0[i]
+        if v.is_nan() || v.is_inf() {
+          raise @err.SparseError::UnsupportedMatrix(
+            "starting_point: initial guess contains non-finite values",
+          )
+        }
+      }
       x0.copy()
     }
   }
@@ -253,12 +368,13 @@ fn starting_point(
 ///
 /// Builds an orthonormal basis of the Krylov subspace and minimises the
 /// residual over it, restarting every `restart` iterations to bound the storage
-/// at `restart` vectors. The convergence test uses the residual estimated from
-/// the Givens rotations, which for right preconditioning is the true residual
-/// of the original system — so no extra product is needed to check it.
+/// at `restart` vectors.
 ///
-/// Preconditioning is applied on the right, which is why the estimate stays
-/// meaningful: the method solves `A M^-1 u = b` and returns `x = M^-1 u`.
+/// Preconditioning is applied on the right: the method solves `A M^-1 u = b`
+/// and forms `x = x0 + M^-1 u`. Convergence is checked against the estimated
+/// residual from Givens rotations and verified against the true relative
+/// residual `||b - A x||_2 / ||b||_2` to guarantee that numerical drift or
+/// precision limits do not produce false convergence.
 pub fn gmres(
   a : @csr.Csr[Double],
   b : Array[Double],
@@ -268,22 +384,29 @@ pub fn gmres(
   initial? : Array[Double]? = None,
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
+  check_solver_options(options)
   if restart <= 0 {
     raise @err.SparseError::DimensionMismatch(
       "gmres: restart must be positive, got " + restart.to_string(),
     )
   }
+  let m64 = restart.to_int64()
+  if (m64 + 1L) * m64 > 2147483647L || restart > 46340 {
+    raise @err.SparseError::DimensionMismatch(
+      "gmres: restart parameter " +
+      restart.to_string() +
+      " exceeds maximum supported capacity",
+    )
+  }
   let n = a.nrows()
   let x = starting_point(a, initial)
   let nb = norm2(b)
+  if nb.is_nan() || nb.is_inf() {
+    raise @err.SparseError::UnsupportedMatrix(
+      "gmres: right-hand side norm is non-finite or overflows floating-point representation",
+    )
+  }
   if nb == 0.0 {
-    for i = 0; i < b.length(); i = i + 1 {
-      if b[i] != 0.0 {
-        raise @err.SparseError::UnsupportedMatrix(
-          "gmres: right-hand side is non-zero but norm underflows floating-point representation",
-        )
-      }
-    }
     return {
       x: Array::make(n, 0.0),
       iterations: 0,
@@ -311,7 +434,15 @@ pub fn gmres(
     let beta = norm2(r)
     residual = beta / nb
     if residual <= options.tol {
-      return { x, iterations, residual, converged: true, }
+      if is_finite_vector(x) {
+        let true_res = relative_residual(a, x, b)
+        if is_finite_val(true_res) && true_res <= options.tol {
+          return { x, iterations, residual: true_res, converged: true, }
+        }
+      }
+    }
+    if beta == 0.0 || !is_finite_val(beta) {
+      break
     }
     for i = 0; i <= m; i = i + 1 {
       g[i] = 0.0
@@ -345,10 +476,8 @@ pub fn gmres(
         h[i + j * (m + 1)] = t
       }
       // New rotation that annihilates the sub-diagonal entry.
-      let denom = Double::sqrt(
-        h[j + j * (m + 1)] * h[j + j * (m + 1)] + hnext * hnext,
-      )
-      if denom == 0.0 {
+      let denom = hypot(h[j + j * (m + 1)], hnext)
+      if denom == 0.0 || !is_finite_val(denom) {
         // The Krylov space closed up; the current iterate is already the
         // minimiser over it, so stop the inner loop and restart.
         inner_converged = true
@@ -367,12 +496,25 @@ pub fn gmres(
           }
         }
         if residual <= options.tol {
-          // Solve the triangular system and apply the right preconditioner.
-          apply_gmres_update(x, basis, h, g, m, j + 1, precond)
-          return { x, iterations, residual, converged: true, }
+          // Check candidate update without prematurely modifying the restart base point x.
+          let x_cand = x.copy()
+          apply_gmres_update(x_cand, basis, h, g, m, j + 1, precond)
+          if is_finite_vector(x_cand) {
+            let true_res = relative_residual(a, x_cand, b)
+            if is_finite_val(true_res) && true_res <= options.tol {
+              return {
+                x: x_cand,
+                iterations,
+                residual: true_res,
+                converged: true,
+              }
+            }
+          }
         }
         if hnext == 0.0 {
           inner_converged = true
+          j = j + 1
+          break
         }
       }
       if inner_converged {
@@ -381,22 +523,33 @@ pub fn gmres(
       j = j + 1
     }
     // Restart: form the best iterate from the basis built in this cycle.
-    if j > 0 || inner_converged {
-      let used = if inner_converged && j == 0 { 0 } else { j }
-      if used > 0 {
-        apply_gmres_update(x, basis, h, g, m, used, precond)
-      }
+    let used = j
+    if used > 0 {
+      apply_gmres_update(x, basis, h, g, m, used, precond)
     }
     let after = sub_vec(b, a.spmv(x))
     residual = norm2(after) / nb
-    if residual <= options.tol {
-      return { x, iterations, residual, converged: true, }
+    if residual <= options.tol && is_finite_vector(x) {
+      let true_res = relative_residual(a, x, b)
+      if is_finite_val(true_res) && true_res <= options.tol {
+        return { x, iterations, residual: true_res, converged: true, }
+      }
     }
     if iterations >= options.max_iter {
       break
     }
   }
-  { x, iterations, residual, converged: false, }
+  let final_res = relative_residual(a, x, b)
+  {
+    x,
+    iterations,
+    residual: if final_res.is_nan() {
+      residual
+    } else {
+      final_res
+    },
+    converged: false,
+  }
 }
 
 // Solve the upper triangular least-squares problem built during one GMRES
