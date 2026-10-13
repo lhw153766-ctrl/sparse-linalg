@@ -86,13 +86,24 @@ pub fn dot(
 }
 
 ///|
-/// Euclidean norm.
+/// Euclidean norm, scaled to avoid underflow and overflow on extreme vectors.
 pub fn norm2(a : Array[Double]) -> Double {
+  let mut max_val = 0.0
+  for i = 0; i < a.length(); i = i + 1 {
+    let abs_val = Double::abs(a[i])
+    if abs_val > max_val {
+      max_val = abs_val
+    }
+  }
+  if max_val == 0.0 {
+    return 0.0
+  }
   let mut acc = 0.0
   for i = 0; i < a.length(); i = i + 1 {
-    acc = acc + a[i] * a[i]
+    let scaled = a[i] / max_val
+    acc = acc + scaled * scaled
   }
-  Double::sqrt(acc)
+  max_val * Double::sqrt(acc)
 }
 
 ///|

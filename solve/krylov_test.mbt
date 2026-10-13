@@ -590,3 +590,21 @@ test "the starting point is copied, not aliased" {
   let _ = @solve.cg(a, b, initial=Some(start))
   debug_inspect(start, content="[0, 0]")
 }
+
+///|
+test "scaled norm2 avoids underflow and overflow" {
+  inspect(@solve.norm2([1.0e-200]) > 0.0, content="true")
+  inspect(@solve.norm2([1.0e200]) < 1.0e300, content="true")
+}
+
+///|
+test "solve_cholesky rejects asymmetric input matrix" {
+  let a = nonsym2()
+  let res = try {
+    let _ = @solve.solve_cholesky(a, [1.0, 1.0])
+    false
+  } catch {
+    _ => true
+  }
+  inspect(res, content="true")
+}

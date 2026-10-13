@@ -152,12 +152,15 @@ pub fn laplacian(
 }
 
 ///|
-/// The normalized Laplacian `I - D^(-1/2) A D^(-1/2)`.
+/// The symmetric normalized Laplacian `L = S (D - A) S`.
 ///
-/// Its eigenvalues lie in `[0, 2]`, which makes it the usual choice for
-/// spectral partitioning.
+/// For vertices with positive degree, `S_ii = 1 / sqrt(d_i)`, yielding diagonal 1.
+/// When `isolated_zero` is true (the default matching SciPy and NetworkX), isolated
+/// vertices (`d_i == 0`) have diagonal 0 so that zero eigenvalue multiplicity equals
+/// the number of connected components. Set `isolated_zero = false` to assign 1 to all diagonals.
 pub fn normalized_laplacian(
   a : @csr.Csr[Double],
+  isolated_zero? : Bool = true,
 ) -> @csr.Csr[Double] raise @err.SparseError {
   if a.nrows() != a.ncols() {
     raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
@@ -167,8 +170,27 @@ pub fn normalized_laplacian(
       "normalized_laplacian: the adjacency matrix is not symmetric",
     )
   }
+  let va = a.vals()
+  for k = 0; k < va.length(); k = k + 1 {
+    let w = va[k]
+    if !(w >= 0.0 && w <= 1.7976931348623157e308) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "normalized_laplacian: edge weights must be finite and non-negative, got " +
+        w.to_string(),
+      )
+    }
+  }
   let n = a.nrows()
   let d = weighted_degree(a)
+  for i = 0; i < n; i = i + 1 {
+    if !(d[i] >= 0.0 && d[i] <= 1.7976931348623157e308) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "normalized_laplacian: degree of vertex " +
+        i.to_string() +
+        " overflows floating-point range",
+      )
+    }
+  }
   let inv_sqrt : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     if d[i] > 0.0 {
@@ -177,12 +199,15 @@ pub fn normalized_laplacian(
   }
   let rp = a.row_ptr()
   let ci = a.col_idx()
-  let va = a.vals()
   let row_ptr : Array[Int] = Array(capacity=n + 1)
   let col_idx : Array[Int] = Array(capacity=a.nnz() + n)
   let vals : Array[Double] = Array(capacity=a.nnz() + n)
   row_ptr.push(0)
   for i = 0; i < n; i = i + 1 {
+    if d[i] == 0.0 && isolated_zero {
+      row_ptr.push(col_idx.length())
+      continue
+    }
     let mut inserted = false
     for k = rp[i]; k < rp[i + 1]; k = k + 1 {
       let j = ci[k]

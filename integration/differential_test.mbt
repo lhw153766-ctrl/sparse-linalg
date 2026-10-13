@@ -425,7 +425,7 @@ test "the normalized laplacian of a random weighted graph matches its dense cons
     for i = 0; i < n; i = i + 1 {
       for j = 0; j < n; j = j + 1 {
         if i == j {
-          expected[i * n + j] = 1.0
+          expected[i * n + j] = if deg[i] > 0.0 { 1.0 } else { 0.0 }
         } else {
           expected[i * n + j] = -dense_a[i * n + j] * inv_sqrt[i] * inv_sqrt[j]
         }

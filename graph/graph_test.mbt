@@ -191,8 +191,22 @@ test "an isolated vertex has a zero-degree row" {
   let a = @graph.adjacency_from_edges(3, [(0, 1)])
   debug_inspect(@graph.degree(a), content="[1, 1, 0]")
   let nl = @graph.normalized_laplacian(a)
-  // The diagonal stays 1 rather than becoming a division by zero.
-  debug_inspect(nl.diagonal(), content="[1, 1, 1]")
+  // Standard L = S(D-A)S assigns 0 to isolated vertices (SciPy / NetworkX convention).
+  debug_inspect(nl.diagonal(), content="[1, 1, 0]")
+  // Optional isolated_zero=false assigns 1 to all diagonals.
+  let nl_unit = @graph.normalized_laplacian(a, isolated_zero=false)
+  debug_inspect(nl_unit.diagonal(), content="[1, 1, 1]")
+}
+
+///|
+test "normalized laplacian rejects negative edge weights" {
+  let a = @graph.weighted_adjacency_from_edges(2, [(0, 1, -2.0)])
+  inspect(
+    raises(() => {
+      let _ = @graph.normalized_laplacian(a)
+    }),
+    content="true",
+  )
 }
 
 ///|

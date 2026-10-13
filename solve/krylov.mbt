@@ -37,6 +37,13 @@ pub fn cg(
   let x = starting_point(a, initial)
   let nb = norm2(b)
   if nb == 0.0 {
+    for i = 0; i < b.length(); i = i + 1 {
+      if b[i] != 0.0 {
+        raise @err.SparseError::UnsupportedMatrix(
+          "cg: right-hand side is non-zero but norm underflows floating-point representation",
+        )
+      }
+    }
     // A x = 0 is solved exactly by x = 0.
     return {
       x: Array::make(n, 0.0),
@@ -116,6 +123,13 @@ pub fn bicgstab(
   let x = starting_point(a, initial)
   let nb = norm2(b)
   if nb == 0.0 {
+    for i = 0; i < b.length(); i = i + 1 {
+      if b[i] != 0.0 {
+        raise @err.SparseError::UnsupportedMatrix(
+          "bicgstab: right-hand side is non-zero but norm underflows floating-point representation",
+        )
+      }
+    }
     return {
       x: Array::make(n, 0.0),
       iterations: 0,
@@ -263,6 +277,13 @@ pub fn gmres(
   let x = starting_point(a, initial)
   let nb = norm2(b)
   if nb == 0.0 {
+    for i = 0; i < b.length(); i = i + 1 {
+      if b[i] != 0.0 {
+        raise @err.SparseError::UnsupportedMatrix(
+          "gmres: right-hand side is non-zero but norm underflows floating-point representation",
+        )
+      }
+    }
     return {
       x: Array::make(n, 0.0),
       iterations: 0,

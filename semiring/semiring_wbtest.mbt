@@ -53,6 +53,11 @@ test "the min-plus semiring behaves as minimum and addition" {
   inspect((MinPlus::infinity() + MinPlus::new(7.0)).value(), content="7")
   // And one is the identity for addition.
   inspect((MinPlus::one() * MinPlus::new(7.0)).value(), content="7")
+  // Annihilator: infinity * anything is infinity even with large negative values
+  inspect(
+    (MinPlus::infinity() * MinPlus::new(-1.0e307)).is_infinite(),
+    content="true",
+  )
 }
 
 ///|

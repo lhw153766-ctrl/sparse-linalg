@@ -102,12 +102,27 @@ pub fn MinPlus::value(self : MinPlus) -> Double {
 
 ///|
 pub impl Add for MinPlus with fn add(a : MinPlus, b : MinPlus) -> MinPlus {
-  { v: if a.v < b.v { a.v } else { b.v }, }
+  if a.is_infinite() {
+    b
+  } else if b.is_infinite() {
+    a
+  } else {
+    { v: if a.v < b.v { a.v } else { b.v }, }
+  }
 }
 
 ///|
 pub impl Mul for MinPlus with fn mul(a : MinPlus, b : MinPlus) -> MinPlus {
-  { v: a.v + b.v, }
+  if a.is_infinite() || b.is_infinite() {
+    MinPlus::infinity()
+  } else {
+    let sum = a.v + b.v
+    if sum >= 1.0e308 {
+      MinPlus::infinity()
+    } else {
+      { v: sum, }
+    }
+  }
 }
 
 ///|

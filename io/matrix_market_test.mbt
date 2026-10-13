@@ -460,3 +460,80 @@ test "an empty matrix round trips" {
   inspect(back.nnz(), content="0")
   inspect(back.nrows(), content="3")
 }
+
+///|
+test "matrix market rejects dimension multiplication overflow instead of panicking" {
+  let text = "%%MatrixMarket matrix array real general\n65536 65536\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects pattern combined with skew-symmetric" {
+  let text = "%%MatrixMarket matrix coordinate pattern skew-symmetric\n2 2 1\n2 1\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects non-square symmetric coordinate matrix" {
+  let text = "%%MatrixMarket matrix coordinate real symmetric\n2 3 0\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects non-zero diagonal in skew-symmetric matrix" {
+  let text = "%%MatrixMarket matrix coordinate real skew-symmetric\n1 1 1\n1 1 7.0\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects decimal values for integer field" {
+  let text = "%%MatrixMarket matrix array integer general\n1 1\n1.5\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects extra data tokens in array format" {
+  let text = "%%MatrixMarket matrix array real general\n1 1\n2.0 99.0\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects extra data lines in coordinate format" {
+  let text = "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 1 1.0\n2 2 2.0\n"
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(text)
+    }),
+    content="true",
+  )
+}

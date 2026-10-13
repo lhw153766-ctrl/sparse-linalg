@@ -123,6 +123,18 @@ fn require_double(s : String, what : String) -> Double raise @err.SparseError {
 }
 
 ///|
+fn require_value(
+  s : String,
+  what : String,
+  field : String,
+) -> Double raise @err.SparseError {
+  if field == "integer" && s.contains(".") {
+    raise parse_error("expected an integer for " + what + ", got '" + s + "'")
+  }
+  require_double(s, what)
+}
+
+///|
 /// Parse the `%%MatrixMarket` header line.
 pub fn parse_header(line : String) -> MatrixMarketHeader raise @err.SparseError {
   let fields = split_fields(normalise_separators(line))
@@ -208,6 +220,11 @@ pub fn parse_matrix_market_full(
       "hermitian symmetry is only meaningful for complex matrices, which are not supported",
     )
   }
+  if header.field == "pattern" && header.symmetry == "skew-symmetric" {
+    raise parse_error(
+      "pattern field is incompatible with skew-symmetric symmetry",
+    )
+  }
   if lines.length() < 1 {
     raise parse_error("the document has a header but no size line")
   }
@@ -229,14 +246,53 @@ pub fn parse_matrix_market_full(
       "negative dimensions " + nrows.to_string() + "x" + ncols.to_string(),
     )
   }
+  if (header.symmetry == "symmetric" || header.symmetry == "skew-symmetric") &&
+    nrows != ncols {
+    raise parse_error(
+      header.symmetry +
+      " matrix must be square, got " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string(),
+    )
+  }
+  let r64 = nrows.to_int64()
+  let c64 = ncols.to_int64()
   let declared_nnz = if is_coordinate {
     require_int(size[2], "the entry count")
   } else if header.symmetry == "symmetric" {
-    nrows * (nrows + 1) / 2
+    let tot = r64 * (r64 + 1L) / 2L
+    if tot > 2147483647L || tot < 0L {
+      raise parse_error(
+        "matrix dimension product exceeds maximum supported size: " +
+        nrows.to_string() +
+        "x" +
+        ncols.to_string(),
+      )
+    }
+    tot.to_int()
   } else if header.symmetry == "skew-symmetric" {
-    nrows * (nrows - 1) / 2
+    let tot = r64 * (r64 - 1L) / 2L
+    if tot > 2147483647L || tot < 0L {
+      raise parse_error(
+        "matrix dimension product exceeds maximum supported size: " +
+        nrows.to_string() +
+        "x" +
+        ncols.to_string(),
+      )
+    }
+    tot.to_int()
   } else {
-    nrows * ncols
+    let tot = r64 * c64
+    if tot > 2147483647L || tot < 0L {
+      raise parse_error(
+        "matrix dimension product exceeds maximum supported size: " +
+        nrows.to_string() +
+        "x" +
+        ncols.to_string(),
+      )
+    }
+    tot.to_int()
   }
   if declared_nnz < 0 {
     raise parse_error("negative entry count " + declared_nnz.to_string())
@@ -245,17 +301,27 @@ pub fn parse_matrix_market_full(
   if is_coordinate {
     let has_value = header.field != "pattern"
     let width = if has_value { 3 } else { 2 }
+    let available_lines = lines.length() - 1
+    if available_lines < declared_nnz {
+      raise parse_error(
+        "the file declares " +
+        declared_nnz.to_string() +
+        " entries but only " +
+        available_lines.to_string() +
+        " are present",
+      )
+    }
+    if available_lines > declared_nnz {
+      raise parse_error(
+        "the file declares " +
+        declared_nnz.to_string() +
+        " entries but has " +
+        available_lines.to_string() +
+        " entry lines",
+      )
+    }
     for k = 0; k < declared_nnz; k = k + 1 {
       let line_index = 1 + k
-      if line_index >= lines.length() {
-        raise parse_error(
-          "the file declares " +
-          declared_nnz.to_string() +
-          " entries but only " +
-          (lines.length() - 1).to_string() +
-          " are present",
-        )
-      }
       let f = split_fields(normalise_separators(lines[line_index]))
       if f.length() < width {
         raise parse_error(
@@ -271,7 +337,7 @@ pub fn parse_matrix_market_full(
       let i = require_int(f[0], "a row index") - 1
       let j = require_int(f[1], "a column index") - 1
       let v = if has_value {
-        require_double(f[2], "an entry value")
+        require_value(f[2], "an entry value", header.field)
       } else {
         1.0
       }
@@ -284,34 +350,8 @@ pub fn parse_matrix_market_full(
     if header.field == "pattern" {
       raise parse_error("pattern field is not valid for array format")
     }
-    let expected = if header.symmetry == "symmetric" {
-      if nrows != ncols {
-        raise parse_error(
-          "symmetric array matrix must be square, got " +
-          nrows.to_string() +
-          "x" +
-          ncols.to_string(),
-        )
-      }
-      nrows * (nrows + 1) / 2
-    } else if header.symmetry == "skew-symmetric" {
-      if nrows != ncols {
-        raise parse_error(
-          "skew-symmetric array matrix must be square, got " +
-          nrows.to_string() +
-          "x" +
-          ncols.to_string(),
-        )
-      }
-      nrows * (nrows - 1) / 2
-    } else if header.symmetry == "general" {
-      nrows * ncols
-    } else {
-      raise parse_error(
-        "array format does not support symmetry '" + header.symmetry + "'",
-      )
-    }
-    let tokens : Array[String] = Array(capacity=expected)
+    let expected = declared_nnz
+    let tokens : Array[String] = Array(capacity=if expected < 1000000 { expected } else { 0 })
     for k = 1; k < lines.length(); k = k + 1 {
       let fields = split_fields(normalise_separators(lines[k]))
       for f in fields {
@@ -326,11 +366,19 @@ pub fn parse_matrix_market_full(
         tokens.length().to_string(),
       )
     }
+    if tokens.length() > expected {
+      raise parse_error(
+        "array format has " +
+        tokens.length().to_string() +
+        " values, exceeding declared " +
+        expected.to_string(),
+      )
+    }
     let mut token_idx = 0
     if header.symmetry == "symmetric" {
       for j = 0; j < ncols; j = j + 1 {
         for i = j; i < nrows; i = i + 1 {
-          let v = require_double(tokens[token_idx], "an entry value")
+          let v = require_value(tokens[token_idx], "an entry value", header.field)
           token_idx = token_idx + 1
           if v != 0.0 {
             coo.push(i, j, v)
@@ -343,7 +391,7 @@ pub fn parse_matrix_market_full(
     } else if header.symmetry == "skew-symmetric" {
       for j = 0; j < ncols; j = j + 1 {
         for i = j + 1; i < nrows; i = i + 1 {
-          let v = require_double(tokens[token_idx], "an entry value")
+          let v = require_value(tokens[token_idx], "an entry value", header.field)
           token_idx = token_idx + 1
           if v != 0.0 {
             coo.push(i, j, v)
@@ -354,7 +402,7 @@ pub fn parse_matrix_market_full(
     } else {
       for j = 0; j < ncols; j = j + 1 {
         for i = 0; i < nrows; i = i + 1 {
-          let v = require_double(tokens[token_idx], "an entry value")
+          let v = require_value(tokens[token_idx], "an entry value", header.field)
           token_idx = token_idx + 1
           if v != 0.0 {
             coo.push(i, j, v)
@@ -385,6 +433,15 @@ fn add_entry(
 ) -> Unit raise @err.SparseError {
   if i < 0 || i >= coo.nrows() || j < 0 || j >= coo.ncols() {
     raise @err.SparseError::IndexOutOfBounds(i, j, coo.nrows(), coo.ncols())
+  }
+  if symmetry == "skew-symmetric" && i == j && v != 0.0 {
+    raise parse_error(
+      "skew-symmetric matrix cannot have non-zero diagonal entry at (" +
+      (i + 1).to_string() +
+      "," +
+      (j + 1).to_string() +
+      ")",
+    )
   }
   coo.push(i, j, v)
   if i != j {

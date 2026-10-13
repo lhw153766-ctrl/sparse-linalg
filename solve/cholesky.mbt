@@ -352,5 +352,5 @@ pub fn solve_cholesky(
   a : @csr.Csr[Double],
   b : Array[Double],
 ) -> Array[Double] raise @err.SparseError {
-  CholeskyFactor::new(a).solve(b)
+  CholeskyFactor::new_checked(a).solve(b)
 }
