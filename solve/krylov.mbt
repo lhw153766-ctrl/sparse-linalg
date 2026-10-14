@@ -19,6 +19,25 @@
 //             it restarts.
 
 ///|
+fn system_magnitude(a : @csr.Csr[Double], b : Array[Double]) -> Double {
+  let mut m = 0.0
+  for v in b {
+    let abs_v = Double::abs(v)
+    if abs_v > m {
+      m = abs_v
+    }
+  }
+  let va = a.vals()
+  for v in va {
+    let abs_v = Double::abs(v)
+    if abs_v > m {
+      m = abs_v
+    }
+  }
+  m
+}
+
+///|
 /// Conjugate gradient, for symmetric positive definite systems.
 ///
 /// The method assumes `A` is symmetric and positive definite. It cannot verify
@@ -34,6 +53,16 @@ pub fn cg(
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
   check_solver_options(options)
+  let mag = system_magnitude(a, b)
+  if mag < 1.0e-100 && mag > 0.0 {
+    let s = SUBNORMAL_SCALE_FACTOR
+    let scaled_a = a.scale(s)
+    let scaled_b : Array[Double] = Array::make(b.length(), 0.0)
+    for i = 0; i < b.length(); i = i + 1 {
+      scaled_b[i] = b[i] * s
+    }
+    return cg(scaled_a, scaled_b, options~, precond~, initial~)
+  }
   let n = a.nrows()
   let x = starting_point(a, initial)
   let nb = norm2(b)
@@ -136,10 +165,15 @@ pub fn cg(
     rz = rz_new
   }
   let final_res = relative_residual(a, x, b)
+  if !is_finite_vector(x) {
+    raise @err.SparseError::UnsupportedMatrix(
+      "cg: numerical breakdown: iterate contains non-finite values",
+    )
+  }
   {
     x,
     iterations: options.max_iter,
-    residual: if final_res.is_nan() {
+    residual: if final_res.is_nan() || final_res.is_inf() {
       norm2(r) / nb
     } else {
       final_res
@@ -163,6 +197,16 @@ pub fn bicgstab(
 ) -> SolveResult raise @err.SparseError {
   check_system(a, b)
   check_solver_options(options)
+  let mag = system_magnitude(a, b)
+  if mag < 1.0e-100 && mag > 0.0 {
+    let s = SUBNORMAL_SCALE_FACTOR
+    let scaled_a = a.scale(s)
+    let scaled_b : Array[Double] = Array::make(b.length(), 0.0)
+    for i = 0; i < b.length(); i = i + 1 {
+      scaled_b[i] = b[i] * s
+    }
+    return bicgstab(scaled_a, scaled_b, options~, precond~, initial~)
+  }
   let n = a.nrows()
   let x = starting_point(a, initial)
   let nb = norm2(b)
@@ -319,10 +363,15 @@ pub fn bicgstab(
     rho_old = rho
   }
   let final_res = relative_residual(a, x, b)
+  if !is_finite_vector(x) {
+    raise @err.SparseError::UnsupportedMatrix(
+      "bicgstab: numerical breakdown: iterate contains non-finite values",
+    )
+  }
   {
     x,
     iterations: options.max_iter,
-    residual: if final_res.is_nan() {
+    residual: if final_res.is_nan() || final_res.is_inf() {
       norm2(r) / nb
     } else {
       final_res
@@ -397,6 +446,16 @@ pub fn gmres(
       restart.to_string() +
       " exceeds maximum supported capacity",
     )
+  }
+  let mag = system_magnitude(a, b)
+  if mag < 1.0e-100 && mag > 0.0 {
+    let s = SUBNORMAL_SCALE_FACTOR
+    let scaled_a = a.scale(s)
+    let scaled_b : Array[Double] = Array::make(b.length(), 0.0)
+    for i = 0; i < b.length(); i = i + 1 {
+      scaled_b[i] = b[i] * s
+    }
+    return gmres(scaled_a, scaled_b, options~, restart~, precond~, initial~)
   }
   let n = a.nrows()
   let x = starting_point(a, initial)
@@ -525,7 +584,13 @@ pub fn gmres(
     // Restart: form the best iterate from the basis built in this cycle.
     let used = j
     if used > 0 {
-      apply_gmres_update(x, basis, h, g, m, used, precond)
+      let x_cand = x.copy()
+      apply_gmres_update(x_cand, basis, h, g, m, used, precond)
+      if is_finite_vector(x_cand) {
+        for i = 0; i < n; i = i + 1 {
+          x[i] = x_cand[i]
+        }
+      }
     }
     let after = sub_vec(b, a.spmv(x))
     residual = norm2(after) / nb
@@ -540,11 +605,20 @@ pub fn gmres(
     }
   }
   let final_res = relative_residual(a, x, b)
+  if !is_finite_vector(x) {
+    raise @err.SparseError::UnsupportedMatrix(
+      "gmres: numerical breakdown: iterate contains non-finite values",
+    )
+  }
   {
     x,
     iterations,
-    residual: if final_res.is_nan() {
-      residual
+    residual: if final_res.is_nan() || final_res.is_inf() {
+      if residual.is_nan() || residual.is_inf() {
+        1.0
+      } else {
+        residual
+      }
     } else {
       final_res
     },

@@ -306,11 +306,11 @@ pub fn[F : Add] Coo::to_csr(self : Coo[F]) -> @csr.Csr[F] {
 
 ///|
 /// Expand to a dense row-major array, summing duplicates.
-pub fn[F : Add + Default] Coo::to_dense(self : Coo[F]) -> Array[F] {
-  let dense : Array[F] = Array::make(
-    self.nrows * self.ncols,
-    Default::default(),
-  )
+pub fn[F : Add + Default] Coo::to_dense(
+  self : Coo[F],
+) -> Array[F] raise @err.SparseError {
+  let total = @err.check_dense_capacity(self.nrows, self.ncols)
+  let dense : Array[F] = Array::make(total, Default::default())
   for k = 0; k < self.vals.length(); k = k + 1 {
     let at = self.rows[k] * self.ncols + self.cols[k]
     dense[at] = dense[at] + self.vals[k]
@@ -325,9 +325,10 @@ pub fn[F : Add + Default] Coo::to_dense(self : Coo[F]) -> Array[F] {
 /// summing duplicates is silent, so an accidental repeat would otherwise go
 /// unnoticed.
 pub fn[F] Coo::has_duplicates(self : Coo[F]) -> Bool {
-  let seen : Array[Int] = Array(capacity=self.vals.length())
+  let seen : Array[Int64] = Array(capacity=self.vals.length())
+  let ncols64 = self.ncols.to_int64()
   for k = 0; k < self.vals.length(); k = k + 1 {
-    seen.push(self.rows[k] * self.ncols + self.cols[k])
+    seen.push(self.rows[k].to_int64() * ncols64 + self.cols[k].to_int64())
   }
   seen.sort()
   for k = 1; k < seen.length(); k = k + 1 {
@@ -341,9 +342,10 @@ pub fn[F] Coo::has_duplicates(self : Coo[F]) -> Bool {
 ///|
 /// Number of coordinates that appear more than once.
 pub fn[F] Coo::duplicate_count(self : Coo[F]) -> Int {
-  let seen : Array[Int] = Array(capacity=self.vals.length())
+  let seen : Array[Int64] = Array(capacity=self.vals.length())
+  let ncols64 = self.ncols.to_int64()
   for k = 0; k < self.vals.length(); k = k + 1 {
-    seen.push(self.rows[k] * self.ncols + self.cols[k])
+    seen.push(self.rows[k].to_int64() * ncols64 + self.cols[k].to_int64())
   }
   seen.sort()
   let mut dups = 0

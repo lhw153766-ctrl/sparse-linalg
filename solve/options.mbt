@@ -262,6 +262,13 @@ pub fn add_vec(
 ///|
 /// The relative residual `||b - A x|| / ||b||`.
 ///
+
+///|
+/// Scale factor (2^500) used to bring subnormal systems into standard Double
+/// normal floating-point range without rounding loss.
+pub const SUBNORMAL_SCALE_FACTOR : Double = 3.273390607896142e150
+
+///|
 /// Reported by every solver, and also useful on its own to check a solution
 /// that came from somewhere else.
 pub fn relative_residual(
@@ -277,6 +284,41 @@ pub fn relative_residual(
       a.nrows().to_string() +
       " rows",
     )
+  }
+  let mut m = 0.0
+  for v in b {
+    let abs_v = Double::abs(v)
+    if abs_v > m {
+      m = abs_v
+    }
+  }
+  let va = a.vals()
+  for v in va {
+    let abs_v = Double::abs(v)
+    if abs_v > m {
+      m = abs_v
+    }
+  }
+  if m < 1.0e-100 && m > 0.0 {
+    let s = SUBNORMAL_SCALE_FACTOR
+    let scaled_a = a.scale(s)
+    let scaled_b : Array[Double] = Array::make(b.length(), 0.0)
+    for i = 0; i < b.length(); i = i + 1 {
+      scaled_b[i] = b[i] * s
+    }
+    let r = sub_vec(scaled_b, scaled_a.spmv(x))
+    let nr = norm2(r)
+    let nb = norm2(scaled_b)
+    if nr.is_nan() || nb.is_nan() {
+      return 0.0 / 0.0
+    }
+    if nb == 0.0 {
+      return nr
+    }
+    if nb.is_inf() {
+      return 0.0 / 0.0
+    }
+    return nr / nb
   }
   let r = sub_vec(b, a.spmv(x))
   let nr = norm2(r)

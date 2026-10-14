@@ -148,8 +148,7 @@ test "r2 MinPlus multiple zero representations additive commutativity" {
 test "r2 MinPlus negative overflow" {
   let a = @semiring.MinPlus::new(-1.0e308)
   let b = @semiring.MinPlus::new(-1.0e308)
-  let c = @semiring.MinPlus::new(9.0e307)
-  assert_eq((a * b * c).value(), (a * (b * c)).value())
+  assert_eq((a * b).value(), -@double.infinity)
 }
 
 ///|

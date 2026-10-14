@@ -323,6 +323,16 @@ pub fn CholeskyFactor::solve(
     }
     y[j] = acc / d
   }
+  for j = 0; j < n; j = j + 1 {
+    let val = y[j]
+    if val.is_nan() || val.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "CholeskyFactor::solve: solution overflowed floating-point representation (non-finite entry at index " +
+        j.to_string() +
+        ")",
+      )
+    }
+  }
   y
 }
 
@@ -332,9 +342,12 @@ pub fn CholeskyFactor::solve(
 /// The factorisation is only useful if it multiplies back to the matrix it came
 /// from, and this is how that is checked. It allocates `n^2` entries, so it is a
 /// verification aid, not a working routine.
-pub fn CholeskyFactor::reconstruct(self : CholeskyFactor) -> Array[Double] {
+pub fn CholeskyFactor::reconstruct(
+  self : CholeskyFactor,
+) -> Array[Double] raise @err.SparseError {
   let n = self.n
-  let dense : Array[Double] = Array::make(n * n, 0.0)
+  let total = @err.check_dense_capacity(n, n)
+  let dense : Array[Double] = Array::make(total, 0.0)
   // Accumulate sum_j L(i,j) L(k,j) over the columns, which is exactly (L L^T).
   for j = 0; j < n; j = j + 1 {
     for p = self.col_ptr[j]; p < self.col_ptr[j] + self.counts[j]; p = p + 1 {

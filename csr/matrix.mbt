@@ -372,11 +372,11 @@ pub fn[F : Eq] Csr::is_symmetric(self : Csr[F]) -> Bool raise @err.SparseError {
 /// Intended for tests, small problems, and as the bridge to dense reference
 /// implementations. It is `O(nrows * ncols)` in time and memory, so it is the
 /// wrong tool once the matrix is large enough to need sparsity.
-pub fn[F : Default] Csr::to_dense(self : Csr[F]) -> Array[F] {
-  let dense : Array[F] = Array::make(
-    self.nrows * self.ncols,
-    Default::default(),
-  )
+pub fn[F : Default] Csr::to_dense(
+  self : Csr[F],
+) -> Array[F] raise @err.SparseError {
+  let total = @err.check_dense_capacity(self.nrows, self.ncols)
+  let dense : Array[F] = Array::make(total, Default::default())
   for i = 0; i < self.nrows; i = i + 1 {
     for k = self.row_ptr[i]; k < self.row_ptr[i + 1]; k = k + 1 {
       dense[i * self.ncols + self.col_idx[k]] = self.vals[k]

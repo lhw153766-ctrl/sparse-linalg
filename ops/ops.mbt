@@ -157,19 +157,26 @@ pub fn[F : Add + Mul + Default] spmm(
   b : Array[F],
   b_ncols : Int,
 ) -> Array[F] raise @err.SparseError {
-  if b_ncols < 0 || b.length() != a.ncols() * b_ncols {
+  if b_ncols < 0 {
+    raise @err.SparseError::DimensionMismatch(
+      "spmm: negative b_ncols " + b_ncols.to_string(),
+    )
+  }
+  let expected_b = @err.check_dense_capacity(a.ncols(), b_ncols)
+  if b.length() != expected_b {
     raise @err.SparseError::DimensionMismatch(
       "spmm: B holds " +
       b.length().to_string() +
       " entries, expected " +
-      (a.ncols() * b_ncols).to_string(),
+      expected_b.to_string(),
     )
   }
   let nrows = a.nrows()
+  let out_len = @err.check_dense_capacity(nrows, b_ncols)
   let rp = a.row_ptr()
   let ci = a.col_idx()
   let va = a.vals()
-  let out : Array[F] = Array::make(nrows * b_ncols, Default::default())
+  let out : Array[F] = Array::make(out_len, Default::default())
   for i = 0; i < nrows; i = i + 1 {
     for k = rp[i]; k < rp[i + 1]; k = k + 1 {
       let aik = va[k]
@@ -256,9 +263,9 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
 /// is generic over the scalar type and there is no single notion of "one" that
 /// covers integers and floating point alike.
 pub fn[F] identity(n : Int, one : F) -> @csr.Csr[F] raise @err.SparseError {
-  if n < 0 {
+  if n < 0 || n.to_int64() > @err.MAX_DENSE_ELEMENTS {
     raise @err.SparseError::DimensionMismatch(
-      "identity: negative size " + n.to_string(),
+      "identity: invalid size " + n.to_string(),
     )
   }
   let row_ptr : Array[Int] = Array::make(n + 1, 0)
@@ -284,10 +291,11 @@ pub fn[F] from_dense(
   ncols : Int,
   is_stored : (F) -> Bool,
 ) -> @csr.Csr[F] raise @err.SparseError {
-  if nrows < 0 || ncols < 0 || dense.length() != nrows * ncols {
+  let expected_len = @err.check_dense_capacity(nrows, ncols)
+  if dense.length() != expected_len {
     raise @err.SparseError::DimensionMismatch(
       "from_dense: expected " +
-      (nrows * ncols).to_string() +
+      expected_len.to_string() +
       " entries, got " +
       dense.length().to_string(),
     )

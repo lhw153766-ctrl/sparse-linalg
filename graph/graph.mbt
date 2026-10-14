@@ -325,6 +325,16 @@ pub fn page_rank(
       damping.to_string(),
     )
   }
+  if !(tol > 0.0 && tol <= 1.0) {
+    raise @err.SparseError::DimensionMismatch(
+      "page_rank: tol must be positive, got " + tol.to_string(),
+    )
+  }
+  if max_iter <= 0 {
+    raise @err.SparseError::DimensionMismatch(
+      "page_rank: max_iter must be positive, got " + max_iter.to_string(),
+    )
+  }
   let n = a.nrows()
   if n == 0 {
     return []
@@ -341,14 +351,30 @@ pub fn page_rank(
       )
     }
   }
-  // Out-weight of each vertex, and whether it is dangling.
-  let out_weight : Array[Double] = Array::make(n, 0.0)
+  // Transition probabilities P_ij = w_ij / sum_k(w_ik).
+  // Computed using row-max scaling to guarantee scale invariance and prevent
+  // intermediate overflow (sum > 1e308) or underflow (subnormal weights).
+  let is_dangling : Array[Bool] = Array::make(n, false)
+  let probs : Array[Double] = Array::make(va.length(), 0.0)
   for i = 0; i < n; i = i + 1 {
-    let mut s = 0.0
+    let mut row_max = 0.0
     for k = rp[i]; k < rp[i + 1]; k = k + 1 {
-      s = s + va[k]
+      let w = va[k]
+      if w > row_max {
+        row_max = w
+      }
     }
-    out_weight[i] = s
+    if row_max == 0.0 {
+      is_dangling[i] = true
+    } else {
+      let mut scaled_sum = 0.0
+      for k = rp[i]; k < rp[i + 1]; k = k + 1 {
+        scaled_sum = scaled_sum + va[k] / row_max
+      }
+      for k = rp[i]; k < rp[i + 1]; k = k + 1 {
+        probs[k] = va[k] / row_max / scaled_sum
+      }
+    }
   }
   let base = (1.0 - damping) / n.to_double()
   let mut rank : Array[Double] = Array::make(n, 1.0 / n.to_double())
@@ -357,7 +383,7 @@ pub fn page_rank(
     // Rank held by dangling vertices is redistributed uniformly.
     let mut dangling = 0.0
     for i = 0; i < n; i = i + 1 {
-      if out_weight[i] == 0.0 {
+      if is_dangling[i] {
         dangling = dangling + rank[i]
       }
     }
@@ -365,15 +391,15 @@ pub fn page_rank(
     for i = 0; i < n; i = i + 1 {
       next[i] = base + share
     }
-    // Push each vertex's rank along its outgoing links.
+    // Push each vertex's rank along its outgoing links using precomputed
+    // normalized transition probabilities.
     for i = 0; i < n; i = i + 1 {
-      let w = out_weight[i]
-      if w == 0.0 {
+      if is_dangling[i] {
         continue
       }
-      let contribution = damping * rank[i] / w
+      let c_i = damping * rank[i]
       for k = rp[i]; k < rp[i + 1]; k = k + 1 {
-        next[ci[k]] = next[ci[k]] + contribution * va[k]
+        next[ci[k]] = next[ci[k]] + c_i * probs[k]
       }
     }
     // Convergence is measured on the L1 change, which is the standard choice
@@ -385,17 +411,36 @@ pub fn page_rank(
       total = total + next[i]
     }
     // Renormalise to absorb rounding, then swap the buffers.
-    if total > 0.0 {
-      for i = 0; i < n; i = i + 1 {
-        next[i] = next[i] / total
-      }
+    if total <= 0.0 || total.is_nan() || total.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "page_rank: numerical breakdown: rank distribution sum is non-finite or non-positive",
+      )
+    }
+    for i = 0; i < n; i = i + 1 {
+      next[i] = next[i] / total
     }
     let tmp = rank
     rank = next
     next = tmp
     if delta <= tol {
-      return rank
+      break
     }
+  }
+  // Validate final probability distribution contract.
+  let mut final_sum = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let v = rank[i]
+    if v.is_nan() || v.is_inf() || v < 0.0 {
+      raise @err.SparseError::UnsupportedMatrix(
+        "page_rank: final rank vector contains invalid or non-finite values",
+      )
+    }
+    final_sum = final_sum + v
+  }
+  if Double::abs(final_sum - 1.0) > 1.0e-7 {
+    raise @err.SparseError::UnsupportedMatrix(
+      "page_rank: final rank distribution failed to normalize to 1.0",
+    )
   }
   rank
 }

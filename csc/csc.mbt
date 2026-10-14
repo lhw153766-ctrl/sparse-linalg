@@ -334,11 +334,11 @@ pub fn[F : Default] Csc::diagonal(
 
 ///|
 /// Expand to a dense row-major array of length `nrows * ncols`.
-pub fn[F : Default] Csc::to_dense(self : Csc[F]) -> Array[F] {
-  let dense : Array[F] = Array::make(
-    self.nrows * self.ncols,
-    Default::default(),
-  )
+pub fn[F : Default] Csc::to_dense(
+  self : Csc[F],
+) -> Array[F] raise @err.SparseError {
+  let total = @err.check_dense_capacity(self.nrows, self.ncols)
+  let dense : Array[F] = Array::make(total, Default::default())
   for j = 0; j < self.ncols; j = j + 1 {
     for k = self.col_ptr[j]; k < self.col_ptr[j + 1]; k = k + 1 {
       dense[self.row_idx[k] * self.ncols + j] = self.vals[k]

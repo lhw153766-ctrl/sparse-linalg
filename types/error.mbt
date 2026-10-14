@@ -60,9 +60,45 @@ pub fn Shape::cols(self : Shape) -> Int {
 }
 
 ///|
+/// Safe upper bound on total dense matrix entries to avoid 32-bit integer
+/// overflow and out-of-memory or host RangeError across backends.
+pub const MAX_DENSE_ELEMENTS : Int64 = 30_000_000L
+
+///|
+/// Check that `nrows` and `ncols` can be represented as a dense array,
+/// rejecting negative dimensions, integer overflow, and arrays exceeding
+/// the maximum safe dense capacity (30,000,000 elements).
+pub fn check_dense_capacity(nrows : Int, ncols : Int) -> Int raise SparseError {
+  if nrows < 0 || ncols < 0 {
+    raise SparseError::DimensionMismatch(
+      "check_dense_capacity: negative dimensions " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string(),
+    )
+  }
+  let r = nrows.to_int64()
+  let c = ncols.to_int64()
+  let total = r * c
+  if total < 0L || total > MAX_DENSE_ELEMENTS {
+    raise SparseError::DimensionMismatch(
+      "dense capacity exceeded or overflow: requested " +
+      nrows.to_string() +
+      "x" +
+      ncols.to_string() +
+      " (" +
+      total.to_string() +
+      " elements), max supported is " +
+      MAX_DENSE_ELEMENTS.to_string(),
+    )
+  }
+  total.to_int()
+}
+
+///|
 /// Total number of entries a dense matrix of this shape would hold.
-pub fn Shape::dense_len(self : Shape) -> Int {
-  self.rows * self.cols
+pub fn Shape::dense_len(self : Shape) -> Int raise SparseError {
+  check_dense_capacity(self.rows, self.cols)
 }
 
 ///|
@@ -90,9 +126,12 @@ pub fn Shape::check_index(
 /// representation is winning. Returned as `Double` because callers use it for
 /// reporting and for choosing between dense and sparse algorithms.
 pub fn density(shape : Shape, nnz : Int) -> Double {
-  let dense = shape.dense_len()
-  if dense == 0 {
-    return 0.0
+  let r = shape.rows.to_int64()
+  let c = shape.cols.to_int64()
+  let total = r * c
+  if total <= 0L {
+    0.0
+  } else {
+    nnz.to_double() / total.to_double()
   }
-  nnz.to_double() / dense.to_double()
 }
