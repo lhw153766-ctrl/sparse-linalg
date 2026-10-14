@@ -183,12 +183,7 @@ pub fn CholeskyFactor::new(
     raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
   }
   let n = a.nrows()
-  if n > @err.MAX_SPARSE_DIMENSION {
-    raise @err.SparseError::DimensionMismatch(
-      "CholeskyFactor::new: dimension exceeds maximum supported size: " +
-      n.to_string(),
-    )
-  }
+  @err.check_sparse_shape(n, n)
   let va = a.vals()
   for i = 0; i < va.length(); i = i + 1 {
     let v = va[i]
@@ -213,17 +208,23 @@ pub fn CholeskyFactor::new(
   // included. Doing this up front lets the numeric pass write into a flat array
   // without ever growing it.
   let counts : Array[Int] = Array::make(n, 1)
+  let mut factor_nnz = n.to_int64()
   for k = 0; k < n; k = k + 1 {
     let top = ereach(n, acp, ari, k, parent, s, mark)
     for sp = top; sp < n; sp = sp + 1 {
+      factor_nnz = factor_nnz + 1L
+      let _ = @err.check_sparse_nnz(factor_nnz)
       counts[s[sp]] = counts[s[sp]] + 1
     }
   }
   let col_ptr : Array[Int] = Array::make(n + 1, 0)
   for j = 0; j < n; j = j + 1 {
-    col_ptr[j + 1] = col_ptr[j] + counts[j]
+    col_ptr[j + 1] = @err.check_sparse_nnz(
+      col_ptr[j].to_int64() + counts[j].to_int64(),
+    )
   }
   let total = col_ptr[n]
+  @err.check_workspace_capacity(2L * factor_nnz + 7L * n.to_int64() + 1L)
   let row_idx : Array[Int] = Array::make(total, 0)
   let vals : Array[Double] = Array::make(total, 0.0)
   // `fill[j]` is where the next off-diagonal entry of column j goes.

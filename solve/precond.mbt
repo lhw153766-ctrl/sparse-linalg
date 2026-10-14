@@ -20,7 +20,8 @@ pub struct JacobiPrecond {
 
 ///|
 /// Build the Jacobi preconditioner, rejecting a matrix with a zero on the
-/// diagonal since the preconditioner would not be invertible.
+/// diagonal since the preconditioner would not be invertible. Requires finite
+/// diagonal entries whose reciprocals are also representable and finite.
 pub fn JacobiPrecond::new(
   a : @csr.Csr[Double],
 ) -> JacobiPrecond raise @err.SparseError {
@@ -30,10 +31,20 @@ pub fn JacobiPrecond::new(
   let d = a.diagonal()
   let inv : Array[Double] = Array::make(d.length(), 0.0)
   for i = 0; i < d.length(); i = i + 1 {
+    if !is_finite_val(d[i]) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "JacobiPrecond::new: diagonal contains non-finite value",
+      )
+    }
     if d[i] == 0.0 {
       raise @err.SparseError::SingularPivot(i, d[i])
     }
     inv[i] = 1.0 / d[i]
+    if !is_finite_val(inv[i]) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "JacobiPrecond::new: diagonal reciprocal exceeds floating-point range",
+      )
+    }
   }
   { inv_diag: inv, }
 }
@@ -55,6 +66,11 @@ pub fn JacobiPrecond::apply(
   let out : Array[Double] = Array::make(r.length(), 0.0)
   for i = 0; i < r.length(); i = i + 1 {
     out[i] = r[i] * self.inv_diag[i]
+    if !is_finite_val(r[i]) || !is_finite_val(out[i]) {
+      raise @err.SparseError::UnsupportedMatrix(
+        "JacobiPrecond::apply: non-finite input or result",
+      )
+    }
   }
   out
 }
@@ -147,6 +163,11 @@ pub fn Ilu0Precond::new(
       )
   }
   let vals = a.vals().copy()
+  if !is_finite_vector(vals) {
+    raise @err.SparseError::UnsupportedMatrix(
+      "Ilu0Precond::new: matrix contains non-finite value",
+    )
+  }
   for i = 0; i < n; i = i + 1 {
     for kk = rp[i]; kk < rp[i + 1]; kk = kk + 1 {
       let k = ci[kk]
@@ -168,6 +189,16 @@ pub fn Ilu0Precond::new(
           vals[jj] = vals[jj] - lik * vals[kj]
         }
       }
+    }
+  }
+  if !is_finite_vector(vals) {
+    raise @err.SparseError::UnsupportedMatrix(
+      "Ilu0Precond::new: factorization overflowed floating-point range",
+    )
+  }
+  for i = 0; i < n; i = i + 1 {
+    if vals[pos[i]] == 0.0 {
+      raise @err.SparseError::SingularPivot(i, vals[pos[i]])
     }
   }
   { n, row_ptr: rp, col_idx: ci, vals, diag_pos: pos, }
@@ -234,6 +265,11 @@ pub fn Ilu0Precond::apply(
       raise @err.SparseError::SingularPivot(i, pivot)
     }
     z[i] = acc / pivot
+  }
+  if !is_finite_vector(r) || !is_finite_vector(z) {
+    raise @err.SparseError::UnsupportedMatrix(
+      "Ilu0Precond::apply: non-finite input or result",
+    )
   }
   z
 }

@@ -45,8 +45,8 @@ pub fn[F : Add + Default + Eq] add(
   let bcol = b.col_idx()
   let bval = b.vals()
   let row_ptr : Array[Int] = Array(capacity=nrows + 1)
-  let out_col : Array[Int] = Array(capacity=a.nnz() + b.nnz())
-  let out_val : Array[F] = Array(capacity=a.nnz() + b.nnz())
+  let out_col : Array[Int] = Array(capacity=0)
+  let out_val : Array[F] = Array(capacity=0)
   row_ptr.push(0)
   for i = 0; i < nrows; i = i + 1 {
     let mut pa = arp[i]
@@ -55,18 +55,15 @@ pub fn[F : Add + Default + Eq] add(
       let a_done = pa >= arp[i + 1]
       let b_done = pb >= brp[i + 1]
       if !a_done && (b_done || acol[pa] < bcol[pb]) {
-        out_col.push(acol[pa])
-        out_val.push(aval[pa])
+        append_sparse(out_col, out_val, acol[pa], aval[pa])
         pa = pa + 1
       } else if !b_done && (a_done || bcol[pb] < acol[pa]) {
-        out_col.push(bcol[pb])
-        out_val.push(bval[pb])
+        append_sparse(out_col, out_val, bcol[pb], bval[pb])
         pb = pb + 1
       } else {
         let combined = aval[pa] + bval[pb]
         if combined != Default::default() {
-          out_col.push(acol[pa])
-          out_val.push(combined)
+          append_sparse(out_col, out_val, acol[pa], combined)
         }
         pa = pa + 1
         pb = pb + 1
@@ -92,8 +89,8 @@ pub fn[F : Sub + Default + Eq] sub(
   let bcol = b.col_idx()
   let bval = b.vals()
   let row_ptr : Array[Int] = Array(capacity=nrows + 1)
-  let out_col : Array[Int] = Array(capacity=a.nnz() + b.nnz())
-  let out_val : Array[F] = Array(capacity=a.nnz() + b.nnz())
+  let out_col : Array[Int] = Array(capacity=0)
+  let out_val : Array[F] = Array(capacity=0)
   row_ptr.push(0)
   for i = 0; i < nrows; i = i + 1 {
     let mut pa = arp[i]
@@ -102,19 +99,16 @@ pub fn[F : Sub + Default + Eq] sub(
       let a_done = pa >= arp[i + 1]
       let b_done = pb >= brp[i + 1]
       if !a_done && (b_done || acol[pa] < bcol[pb]) {
-        out_col.push(acol[pa])
-        out_val.push(aval[pa])
+        append_sparse(out_col, out_val, acol[pa], aval[pa])
         pa = pa + 1
       } else if !b_done && (a_done || bcol[pb] < acol[pa]) {
         // B contributes with the opposite sign; -0.0 is fine here.
-        out_col.push(bcol[pb])
-        out_val.push(Default::default() - bval[pb])
+        append_sparse(out_col, out_val, bcol[pb], Default::default() - bval[pb])
         pb = pb + 1
       } else {
         let combined = aval[pa] - bval[pb]
         if combined != Default::default() {
-          out_col.push(acol[pa])
-          out_val.push(combined)
+          append_sparse(out_col, out_val, acol[pa], combined)
         }
         pa = pa + 1
         pb = pb + 1
@@ -215,12 +209,7 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
   }
   let nrows = a.nrows()
   let ncols = b.ncols()
-  if ncols > @err.MAX_SPARSE_DIMENSION {
-    raise @err.SparseError::DimensionMismatch(
-      "spgemm: column dimension exceeds maximum supported size: " +
-      ncols.to_string(),
-    )
-  }
+  @err.check_sparse_shape(nrows, ncols)
   let arp = a.row_ptr()
   let acol = a.col_idx()
   let aval = a.vals()
@@ -234,6 +223,9 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
   // Workspace reused across rows. `touched` records which columns were written
   // so the reset at the end of each row costs O(touched), not O(ncols).
   let acc : Array[F] = Array::make(ncols, Default::default())
+  // Structural markers must not depend on the accumulator's numerical value:
+  // cancellation back to zero must not enqueue a column for a second time.
+  let marked : Array[Int] = Array::make(ncols, -1)
   let touched : Array[Int] = Array(capacity=ncols)
   for i = 0; i < nrows; i = i + 1 {
     touched.clear()
@@ -242,7 +234,8 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
       let brow = acol[k]
       for m = brp[brow]; m < brp[brow + 1]; m = m + 1 {
         let j = bcol[m]
-        if acc[j] == Default::default() {
+        if marked[j] != i {
+          marked[j] = i
           touched.push(j)
         }
         acc[j] = acc[j] + aik * bval[m]
@@ -252,8 +245,7 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
     for j in touched {
       let v = acc[j]
       if v != Default::default() {
-        out_col.push(j)
-        out_val.push(v)
+        append_sparse(out_col, out_val, j, v)
       }
       acc[j] = Default::default()
     }
@@ -269,11 +261,8 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
 /// is generic over the scalar type and there is no single notion of "one" that
 /// covers integers and floating point alike.
 pub fn[F] identity(n : Int, one : F) -> @csr.Csr[F] raise @err.SparseError {
-  if n < 0 || n > @err.MAX_SPARSE_DIMENSION {
-    raise @err.SparseError::DimensionMismatch(
-      "identity: invalid size " + n.to_string(),
-    )
-  }
+  @err.check_sparse_shape(n, n)
+  @err.check_workspace_capacity(3L * n.to_int64() + 1L)
   let row_ptr : Array[Int] = Array::make(n + 1, 0)
   let col_idx : Array[Int] = Array::make(n, 0)
   let vals : Array[F] = Array::make(n, one)
@@ -307,19 +296,30 @@ pub fn[F] from_dense(
     )
   }
   let row_ptr : Array[Int] = Array::make(nrows + 1, 0)
-  let col_idx : Array[Int] = Array(capacity=dense.length())
-  let vals : Array[F] = Array(capacity=dense.length())
+  let col_idx : Array[Int] = Array(capacity=0)
+  let vals : Array[F] = Array(capacity=0)
   for i = 0; i < nrows; i = i + 1 {
     for j = 0; j < ncols; j = j + 1 {
       let v = dense[i * ncols + j]
       if is_stored(v) {
-        col_idx.push(j)
-        vals.push(v)
+        append_sparse(col_idx, vals, j, v)
       }
     }
     row_ptr[i + 1] = col_idx.length()
   }
   @csr.Csr::new_unchecked(nrows, ncols, row_ptr, col_idx, vals)
+}
+
+///|
+fn[F] append_sparse(
+  indices : Array[Int],
+  values : Array[F],
+  index : Int,
+  value : F,
+) -> Unit raise @err.SparseError {
+  let _ = @err.check_sparse_nnz(indices.length().to_int64() + 1L)
+  indices.push(index)
+  values.push(value)
 }
 
 ///|

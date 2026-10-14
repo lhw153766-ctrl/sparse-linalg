@@ -271,6 +271,12 @@ pub const SUBNORMAL_SCALE_FACTOR : Double = 3.273390607896142e150
 ///|
 /// Reported by every solver, and also useful on its own to check a solution
 /// that came from somewhere else.
+/// Each row is evaluated in a power-of-two scaled coordinate system, before
+/// taking the norm ratio. In particular, subnormal products are never rounded
+/// to zero before subtracting the right-hand side. Rows whose nonzero terms
+/// span more than 970 binary orders are rejected rather than certified after
+/// silently dropping terms. This is a floating-point residual, not an exact
+/// arithmetic certificate for arbitrarily ill-conditioned systems.
 pub fn relative_residual(
   a : @csr.Csr[Double],
   x : Array[Double],
@@ -285,56 +291,143 @@ pub fn relative_residual(
       " rows",
     )
   }
-  let mut m = 0.0
-  for v in b {
-    let abs_v = Double::abs(v)
-    if abs_v > m {
-      m = abs_v
-    }
+  if x.length() != a.ncols() {
+    raise @err.SparseError::DimensionMismatch(
+      "relative_residual: x length does not match column count",
+    )
   }
   let va = a.vals()
-  for v in va {
-    let abs_v = Double::abs(v)
-    if abs_v > m {
-      m = abs_v
-    }
-  }
-  if m < 1.0e-100 && m > 0.0 {
-    let s = SUBNORMAL_SCALE_FACTOR
-    let scaled_a = a.scale(s)
-    let scaled_b : Array[Double] = Array::make(b.length(), 0.0)
-    for i = 0; i < b.length(); i = i + 1 {
-      scaled_b[i] = b[i] * s
-    }
-    let r = sub_vec(scaled_b, scaled_a.spmv(x))
-    let nr = norm2(r)
-    let nb = norm2(scaled_b)
-    if nr.is_nan() || nb.is_nan() {
-      return 0.0 / 0.0
-    }
-    if nb == 0.0 {
-      return nr
-    }
-    if nb.is_inf() {
-      return 0.0 / 0.0
-    }
-    return nr / nb
-  }
-  let r = sub_vec(b, a.spmv(x))
-  let nr = norm2(r)
-  let nb = norm2(b)
-  if nr.is_nan() || nb.is_nan() {
+  if !is_finite_vector(x) || !is_finite_vector(b) || !is_finite_vector(va) {
     return 0.0 / 0.0
   }
-  if nb == 0.0 {
-    // An all-zero right-hand side is solved exactly by x = 0; use the absolute
-    // residual so the caller does not get a division by zero.
-    return nr
+  let rp = a.row_ptr()
+  let ci = a.col_idx()
+  let n = a.nrows()
+  let mantissas : Array[Double] = Array::make(n, 0.0)
+  let exponents : Array[Int] = Array::make(n, 0)
+  let mut residual_exp = -10000
+  let mut rhs_exp = -10000
+  for i = 0; i < n; i = i + 1 {
+    let mut row_exp = -10000
+    if b[i] != 0.0 {
+      row_exp = binary_exponent(b[i])
+      if row_exp > rhs_exp {
+        rhs_exp = row_exp
+      }
+    }
+    for k = rp[i]; k < rp[i + 1]; k = k + 1 {
+      if va[k] != 0.0 && x[ci[k]] != 0.0 {
+        let e = binary_exponent(va[k]) + binary_exponent(x[ci[k]]) + 1
+        if e > row_exp {
+          row_exp = e
+        }
+      }
+    }
+    if row_exp == -10000 {
+      continue
+    }
+    let mut sum = 0.0
+    let mut correction = 0.0
+    if b[i] != 0.0 {
+      check_residual_scale(binary_exponent(b[i]) - row_exp)
+      sum = @math.scalbn(b[i], -row_exp)
+    }
+    for k = rp[i]; k < rp[i + 1]; k = k + 1 {
+      let v = va[k]
+      let xj = x[ci[k]]
+      if v == 0.0 || xj == 0.0 {
+        continue
+      }
+      let ev = binary_exponent(v)
+      let ex = binary_exponent(xj)
+      check_residual_scale(ev + ex - row_exp)
+      let mv = @math.scalbn(v, -ev)
+      let mx = @math.scalbn(xj, -ex)
+      let product = mv * mx
+      // Dekker splitting on normal mantissas also preserves the rounding
+      // error of multiplication, which a second ordinary SpMV would repeat.
+      let sv = 134217729.0 * mv
+      let sx = 134217729.0 * mx
+      let hv = sv - (sv - mv)
+      let hx = sx - (sx - mx)
+      let lv = mv - hv
+      let lx = mx - hx
+      let product_error = hv * hx - product + hv * lx + lv * hx + lv * lx
+      let shift = ev + ex - row_exp
+      let term = -@math.scalbn(product, shift)
+      let low = -@math.scalbn(product_error, shift)
+      if product_error != 0.0 &&
+        (low == 0.0 || Double::abs(low) < 2.2250738585072014e-308) {
+        raise @err.SparseError::UnsupportedMatrix(
+          "relative_residual: product correction exceeds supported precision",
+        )
+      }
+      let (next, error) = compensated_add(sum, term)
+      correction = correction + error
+      let (next, error) = compensated_add(next, low)
+      correction = correction + error
+      sum = next
+    }
+    let r = sum + correction
+    if r != 0.0 {
+      let er = binary_exponent(r)
+      mantissas[i] = @math.scalbn(r, -er)
+      exponents[i] = row_exp + er
+      if exponents[i] > residual_exp {
+        residual_exp = exponents[i]
+      }
+    }
   }
-  if nb.is_inf() {
-    return 0.0 / 0.0
+  if residual_exp == -10000 {
+    return 0.0
   }
-  nr / nb
+  for i = 0; i < n; i = i + 1 {
+    mantissas[i] = @math.scalbn(mantissas[i], exponents[i] - residual_exp)
+  }
+  let nr = norm2(mantissas)
+  if rhs_exp == -10000 {
+    // An all-zero right-hand side uses the absolute residual.
+    return @math.scalbn(nr, residual_exp)
+  }
+  let scaled_b : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    scaled_b[i] = @math.scalbn(b[i], -rhs_exp)
+  }
+  @math.scalbn(nr / norm2(scaled_b), residual_exp - rhs_exp)
+}
+
+///|
+// Neumaier's error term for an addition in the scaled row accumulator.
+fn compensated_add(a : Double, b : Double) -> (Double, Double) {
+  let sum = a + b
+  let error = if Double::abs(a) >= Double::abs(b) {
+    a - sum + b
+  } else {
+    b - sum + a
+  }
+  (sum, error)
+}
+
+///|
+// floor(log2(abs(v))) for a finite, nonzero Double, including subnormals.
+fn binary_exponent(v : Double) -> Int {
+  let bits = Double::abs(v).reinterpret_as_uint64()
+  let e = ((bits >> 52) & 2047UL).to_int()
+  if e == 0 {
+    let normal = @math.scalbn(v, 54)
+    ((normal.reinterpret_as_uint64() >> 52) & 2047UL).to_int() - 1023 - 54
+  } else {
+    e - 1023
+  }
+}
+
+///|
+fn check_residual_scale(exponent : Int) -> Unit raise @err.SparseError {
+  if exponent < -970 {
+    raise @err.SparseError::UnsupportedMatrix(
+      "relative_residual: row dynamic range exceeds supported precision",
+    )
+  }
 }
 
 // Validate that a matrix and right-hand side are compatible, and that the

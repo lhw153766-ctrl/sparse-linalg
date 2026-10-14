@@ -165,21 +165,12 @@ pub fn cg(
     rz = rz_new
   }
   let final_res = relative_residual(a, x, b)
-  if !is_finite_vector(x) {
+  if !is_finite_vector(x) || !is_finite_val(final_res) {
     raise @err.SparseError::UnsupportedMatrix(
-      "cg: numerical breakdown: iterate contains non-finite values",
+      "cg: numerical breakdown: iterate or verified residual is non-finite",
     )
   }
-  {
-    x,
-    iterations: options.max_iter,
-    residual: if final_res.is_nan() || final_res.is_inf() {
-      norm2(r) / nb
-    } else {
-      final_res
-    },
-    converged: false,
-  }
+  { x, iterations: options.max_iter, residual: final_res, converged: false, }
 }
 
 ///|
@@ -363,21 +354,12 @@ pub fn bicgstab(
     rho_old = rho
   }
   let final_res = relative_residual(a, x, b)
-  if !is_finite_vector(x) {
+  if !is_finite_vector(x) || !is_finite_val(final_res) {
     raise @err.SparseError::UnsupportedMatrix(
-      "bicgstab: numerical breakdown: iterate contains non-finite values",
+      "bicgstab: numerical breakdown: iterate or verified residual is non-finite",
     )
   }
-  {
-    x,
-    iterations: options.max_iter,
-    residual: if final_res.is_nan() || final_res.is_inf() {
-      norm2(r) / nb
-    } else {
-      final_res
-    },
-    converged: false,
-  }
+  { x, iterations: options.max_iter, residual: final_res, converged: false, }
 }
 
 ///|
@@ -447,6 +429,15 @@ pub fn gmres(
       " exceeds maximum supported capacity",
     )
   }
+  // Include both the Krylov basis and Hessenberg matrix, not just each
+  // individual array's Int32 length. Check before any basis allocation.
+  @err.check_workspace_capacity(
+    (m64 + 1L) * a.nrows().to_int64() +
+    (m64 + 1L) * m64 +
+    3L * m64 +
+    1L +
+    8L * a.nrows().to_int64(),
+  )
   let mag = system_magnitude(a, b)
   if mag < 1.0e-100 && mag > 0.0 {
     let s = SUBNORMAL_SCALE_FACTOR
@@ -605,25 +596,12 @@ pub fn gmres(
     }
   }
   let final_res = relative_residual(a, x, b)
-  if !is_finite_vector(x) {
+  if !is_finite_vector(x) || !is_finite_val(final_res) {
     raise @err.SparseError::UnsupportedMatrix(
-      "gmres: numerical breakdown: iterate contains non-finite values",
+      "gmres: numerical breakdown: iterate or verified residual is non-finite",
     )
   }
-  {
-    x,
-    iterations,
-    residual: if final_res.is_nan() || final_res.is_inf() {
-      if residual.is_nan() || residual.is_inf() {
-        1.0
-      } else {
-        residual
-      }
-    } else {
-      final_res
-    },
-    converged: false,
-  }
+  { x, iterations, residual: final_res, converged: false, }
 }
 
 // Solve the upper triangular least-squares problem built during one GMRES

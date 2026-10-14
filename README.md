@@ -218,7 +218,7 @@ moon test  --target all
 moon fmt --check
 ```
 
-213 tests, passing on `wasm`, `wasm-gc`, `js` and `native`. CI runs the same
+315 tests, passing on `wasm`, `wasm-gc`, `js` and `native`. CI runs the same
 commands on Linux, macOS and Windows.
 
 Three kinds of test are used, and the distinction matters:
@@ -244,6 +244,49 @@ The published artifact was checked separately from the working tree: version
 resolved the imports through the download and solved a system with both the
 direct and the iterative solver. Presence in the registry is not the same as
 being installable.
+
+## Numerical and resource limits
+
+Krylov convergence verifies the residual using per-row binary scaling,
+compensated summation and multiplication error correction. This preserves
+subnormal residuals in mixed-scale systems. A row spanning more than 970
+binary orders, or requiring an unrepresentable product correction, raises
+`UnsupportedMatrix` instead of silently losing terms. This is a floating-point
+check, not an exact certificate for arbitrary condition numbers. CG and
+BiCGSTAB can still report numerical breakdown when their recurrence inner
+products underflow or overflow. Small residuals do not guarantee small solution
+errors on ill-conditioned matrices.
+
+Jacobi requires finite, nonzero diagonals with representable reciprocals;
+unrepresentable reciprocals raise `UnsupportedMatrix`. ILU also rejects
+non-finite factors and zero pivots. Preconditioner applications reject non-finite
+results rather than passing them into a solver.
+
+Each dimension is limited to 1,000,000, including zero-column and zero-row
+shapes. Sparse assembly and products are limited to 10,000,000 entries; dense
+arrays to 30,000,000 elements. GMRES checks the combined basis and Hessenberg
+workspace before allocating. Cholesky checks symbolic fill and factor workspace
+before allocating the numeric factor. Capacity errors raise `DimensionMismatch`.
+These are resource policy limits, not a promise that every host has enough
+free memory. `new_unchecked` and mutable backing-array access remain trusted
+APIs: callers must preserve storage invariants.
+
+Matrix Market values use decimal syntax with optional sign, decimal point and
+`e`/`E` exponent. Non-finite values, underscore extensions, extra fields and
+extra entries are rejected. CRLF, tabs, blank lines and whole-line `%` comments
+are supported. Embedded CR separates tokens and never concatenates digits.
+Complex/Hermitian and vector objects are not supported.
+
+PageRank returns the last normalized iterate when its iteration budget expires;
+the array API does not report convergence status. `tol` bounds successive L1
+changes, not distance to the exact stationary distribution. An empty graph
+returns an empty vector.
+
+Floating-point `MinPlus` does not promise exact associativity or an algebraic
+error bound under cancellation. Overflow saturates to signed infinity, positive
+infinity is the absorbing no-path value, and NaN is outside the mathematical
+semiring domain. Shortest-path weights exceeding the floating-point range cannot
+be distinguished from the corresponding saturated values.
 
 ## One product, several algorithms
 

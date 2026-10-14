@@ -103,7 +103,51 @@ fn split_fields(line : String) -> Array[String] {
 
 ///|
 fn normalise_separators(line : String) -> String {
-  line.replace_all(old="\t", new=" ").replace_all(old="\r", new="")
+  // CRLF terminators were already trimmed. An embedded CR is whitespace,
+  // never a license to concatenate two tokens ("1\r2" must not become 12).
+  line.replace_all(old="\t", new=" ").replace_all(old="\r", new=" ")
+}
+
+///|
+// Decimal Matrix Market real syntax, without MoonBit's underscore extension.
+fn is_real_token(s : String) -> Bool {
+  let mut i = 0
+  let n = s.length()
+  if n == 0 {
+    return false
+  }
+  if s[i] == '+' || s[i] == '-' {
+    i = i + 1
+  }
+  let mut digits = 0
+  while i < n && s[i] >= '0' && s[i] <= '9' {
+    digits = digits + 1
+    i = i + 1
+  }
+  if i < n && s[i] == '.' {
+    i = i + 1
+    while i < n && s[i] >= '0' && s[i] <= '9' {
+      digits = digits + 1
+      i = i + 1
+    }
+  }
+  if digits == 0 {
+    return false
+  }
+  if i < n && (s[i] == 'e' || s[i] == 'E') {
+    i = i + 1
+    if i < n && (s[i] == '+' || s[i] == '-') {
+      i = i + 1
+    }
+    let start = i
+    while i < n && s[i] >= '0' && s[i] <= '9' {
+      i = i + 1
+    }
+    if i == start {
+      return false
+    }
+  }
+  i == n
 }
 
 ///|
@@ -141,6 +185,11 @@ fn require_int(s : String, what : String) -> Int raise @err.SparseError {
 
 ///|
 fn require_double(s : String, what : String) -> Double raise @err.SparseError {
+  if !is_real_token(s) {
+    raise parse_error(
+      "expected a decimal number for " + what + ", got '" + s + "'",
+    )
+  }
   let v = @string.parse_double(s) catch {
     _ =>
       raise parse_error("expected a number for " + what + ", got '" + s + "'")
@@ -412,6 +461,11 @@ pub fn parse_matrix_market_full(
     for k = 1; k < lines.length(); k = k + 1 {
       let fields = split_fields(normalise_separators(lines[k]))
       for f in fields {
+        if tokens.length() == expected {
+          raise parse_error(
+            "array format has extra values, exceeding declared count",
+          )
+        }
         tokens.push(f)
       }
     }

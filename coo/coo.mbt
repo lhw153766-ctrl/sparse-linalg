@@ -112,6 +112,8 @@ pub fn[F] Coo::from_triplets(
   ncols : Int,
   triplets : Array[Triplet[F]],
 ) -> Coo[F] raise @err.SparseError {
+  @err.check_sparse_shape(nrows, ncols)
+  let _ = @err.check_sparse_nnz(triplets.length().to_int64())
   let rows : Array[Int] = Array(capacity=triplets.length())
   let cols : Array[Int] = Array(capacity=triplets.length())
   let vals : Array[F] = Array(capacity=triplets.length())
@@ -134,6 +136,7 @@ pub fn[F] Coo::push(
   if row < 0 || row >= self.nrows || col < 0 || col >= self.ncols {
     raise @err.SparseError::IndexOutOfBounds(row, col, self.nrows, self.ncols)
   }
+  let _ = @err.check_sparse_nnz(self.rows.length().to_int64() + 1L)
   self.rows.push(row)
   self.cols.push(col)
   self.vals.push(val)

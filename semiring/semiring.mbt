@@ -75,9 +75,11 @@ pub impl Default for BoolSemiring with fn default() -> BoolSemiring {
 /// - Ordinary negative and positive finite numbers preserve exact Double precision.
 ///   Floating-point arithmetic adheres to IEEE-754 semantics. IEEE-754 floating-point
 ///   addition does not strictly satisfy associativity or distributivity due to
-///   rounding errors and extreme dynamic scale discrepancies. Within the representable
-///   normal dynamic range, algebraic identities hold up to standard floating-point
-///   precision; additions overflowing Double dynamic capacity saturate to +/-Infinity.
+///   rounding, even when all intermediates are finite normal numbers. No strict
+///   algebraic identity or relative error bound is promised under cancellation.
+///   Additions overflowing Double dynamic capacity saturate to +/-Infinity.
+///   NaN propagates except when multiplication by the absorbing +Infinity wins;
+///   NaN is not an element of a mathematical tropical semiring.
 /// - Negative infinity `-Infinity` satisfies `-Infinity * 1 = -Infinity`, while
 ///   `+Infinity * -Infinity = +Infinity` due to zero absorption.
 pub struct MinPlus {

@@ -60,13 +60,12 @@ pub fn Shape::cols(self : Shape) -> Int {
 }
 
 ///|
-/// Safe upper bound on total dense matrix entries to avoid 32-bit integer
-/// overflow and out-of-memory or host RangeError across backends.
+/// Resource policy limit for dense entries. This bounds requested allocation
+/// sizes; it cannot guarantee available memory in every host process.
 pub const MAX_DENSE_ELEMENTS : Int64 = 30_000_000L
 
 ///|
-/// Safe upper bound on sparse matrix dimensions (rows, cols) to prevent
-/// out-of-memory, RangeError in array allocation, or 32-bit integer overflow.
+/// Resource policy limit for each sparse matrix dimension.
 pub const MAX_SPARSE_DIMENSION : Int = 1_000_000
 
 ///|
@@ -74,18 +73,48 @@ pub const MAX_SPARSE_DIMENSION : Int = 1_000_000
 pub const MAX_SPARSE_NNZ : Int = 10_000_000
 
 ///|
-/// Check that `nrows` and `ncols` can be represented as a dense array,
-/// rejecting negative dimensions, integer overflow, and arrays exceeding
-/// the maximum safe dense capacity (30,000,000 elements).
-pub fn check_dense_capacity(nrows : Int, ncols : Int) -> Int raise SparseError {
-  if nrows < 0 || ncols < 0 {
+/// Validate dimensions independently of their product, including zero shapes.
+pub fn check_sparse_shape(nrows : Int, ncols : Int) -> Unit raise SparseError {
+  if nrows < 0 ||
+    ncols < 0 ||
+    nrows > MAX_SPARSE_DIMENSION ||
+    ncols > MAX_SPARSE_DIMENSION {
     raise SparseError::DimensionMismatch(
-      "check_dense_capacity: negative dimensions " +
+      "sparse dimensions exceed supported bounds: " +
       nrows.to_string() +
       "x" +
       ncols.to_string(),
     )
   }
+}
+
+///|
+/// Check entry counts before allocation or growth; narrow only after checking.
+pub fn check_sparse_nnz(count : Int64) -> Int raise SparseError {
+  if count < 0L || count > MAX_SPARSE_NNZ.to_int64() {
+    raise SparseError::DimensionMismatch(
+      "sparse entry capacity exceeded: " + count.to_string(),
+    )
+  }
+  count.to_int()
+}
+
+///|
+/// Bound the total scalar slots requested by an algorithm's work arrays.
+pub fn check_workspace_capacity(count : Int64) -> Unit raise SparseError {
+  if count < 0L || count > MAX_DENSE_ELEMENTS {
+    raise SparseError::DimensionMismatch(
+      "workspace capacity exceeded: " + count.to_string(),
+    )
+  }
+}
+
+///|
+/// Check that `nrows` and `ncols` can be represented as a dense array,
+/// rejecting negative dimensions, integer overflow, and arrays exceeding
+/// the configured dense capacity (30,000,000 elements).
+pub fn check_dense_capacity(nrows : Int, ncols : Int) -> Int raise SparseError {
+  check_sparse_shape(nrows, ncols)
   let r = nrows.to_int64()
   let c = ncols.to_int64()
   let total = r * c
