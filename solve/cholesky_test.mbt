@@ -383,3 +383,50 @@ test "new_checked rejects a non-square matrix" {
   }
   inspect(rejected, content="true")
 }
+
+///|
+test "Cholesky rejects non-finite entries in matrix and RHS" {
+  let inf_mat = @csr.Csr::new(1, 1, [0, 1], [0], [@double.infinity])
+  let nan_mat = @csr.Csr::new(1, 1, [0, 1], [0], [0.0 / 0.0])
+  let b_zero = [0.0]
+
+  let inf_res = try {
+    let _ = @solve.solve_cholesky(inf_mat, b_zero)
+    "success"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(inf_res, content="rejected")
+
+  let nan_res = try {
+    let _ = @solve.solve_cholesky(nan_mat, b_zero)
+    "success"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(nan_res, content="rejected")
+
+  let good_mat = @csr.Csr::new(1, 1, [0, 1], [0], [1.0])
+  let inf_b = [@double.infinity]
+  let nan_b = [0.0 / 0.0]
+
+  let b_inf_res = try {
+    let _ = @solve.solve_cholesky(good_mat, inf_b)
+    "success"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(b_inf_res, content="rejected")
+
+  let b_nan_res = try {
+    let _ = @solve.solve_cholesky(good_mat, nan_b)
+    "success"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(b_nan_res, content="rejected")
+}

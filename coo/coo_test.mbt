@@ -165,3 +165,24 @@ test "Int64 values stay exact through assembly" {
   let csr = a.to_csr()
   inspect(csr.get_or(0, 0, 0L), content="9000000000007")
 }
+
+///|
+test "Coo dimension capacity guards reject excessive allocation requests" {
+  let coo_100m = try {
+    let _ : @coo.Coo[Double] = @coo.Coo::empty(100_000_000, 0)
+    false
+  } catch {
+    @err.SparseError::DimensionMismatch(_) => true
+    _ => false
+  }
+  inspect(coo_100m, content="true")
+
+  let coo_30m = try {
+    let _ : @coo.Coo[Double] = @coo.Coo::empty(30_000_000, 1)
+    false
+  } catch {
+    @err.SparseError::DimensionMismatch(_) => true
+    _ => false
+  }
+  inspect(coo_30m, content="true")
+}

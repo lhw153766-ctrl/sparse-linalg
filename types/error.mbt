@@ -65,6 +65,15 @@ pub fn Shape::cols(self : Shape) -> Int {
 pub const MAX_DENSE_ELEMENTS : Int64 = 30_000_000L
 
 ///|
+/// Safe upper bound on sparse matrix dimensions (rows, cols) to prevent
+/// out-of-memory, RangeError in array allocation, or 32-bit integer overflow.
+pub const MAX_SPARSE_DIMENSION : Int = 1_000_000
+
+///|
+/// Safe upper bound on sparse non-zero entry count across backends.
+pub const MAX_SPARSE_NNZ : Int = 10_000_000
+
+///|
 /// Check that `nrows` and `ncols` can be represented as a dense array,
 /// rejecting negative dimensions, integer overflow, and arrays exceeding
 /// the maximum safe dense capacity (30,000,000 elements).

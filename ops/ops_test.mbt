@@ -294,3 +294,24 @@ test "transpose of a non-symmetric rectangular matrix, entry by entry" {
   inspect(t.get_or(2, 0, -1.0), content="2")
   inspect(t.contains(2, 1), content="false")
 }
+
+///|
+test "identity and spgemm capacity guards reject excessive allocations" {
+  let id_30m = try {
+    let _ = @ops.identity(30_000_000, 1.0)
+    false
+  } catch {
+    @err.SparseError::DimensionMismatch(_) => true
+    _ => false
+  }
+  inspect(id_30m, content="true")
+
+  let id_max = try {
+    let _ = @ops.identity(2147483647, 1.0)
+    false
+  } catch {
+    @err.SparseError::DimensionMismatch(_) => true
+    _ => false
+  }
+  inspect(id_max, content="true")
+}

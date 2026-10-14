@@ -39,9 +39,8 @@ pub fn[F] Csr::new(
       "Csr::new: negative shape " + nrows.to_string() + "x" + ncols.to_string(),
     )
   }
-  let max_dim = 100_000_000
-  if nrows > max_dim ||
-    ncols > max_dim ||
+  if nrows > @err.MAX_SPARSE_DIMENSION ||
+    ncols > @err.MAX_SPARSE_DIMENSION ||
     nrows >= 2147483647 ||
     ncols >= 2147483647 {
     raise @err.SparseError::DimensionMismatch(
@@ -49,6 +48,12 @@ pub fn[F] Csr::new(
       nrows.to_string() +
       "x" +
       ncols.to_string(),
+    )
+  }
+  if col_idx.length() > @err.MAX_SPARSE_NNZ {
+    raise @err.SparseError::DimensionMismatch(
+      "Csr::new: entry count exceeds maximum supported size: " +
+      col_idx.length().to_string(),
     )
   }
   if row_ptr.length() != nrows + 1 {

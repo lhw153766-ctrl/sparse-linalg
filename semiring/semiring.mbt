@@ -73,10 +73,11 @@ pub impl Default for BoolSemiring with fn default() -> BoolSemiring {
 /// - The multiplicative identity is 0.0 (`MinPlus::one()`).
 /// - Positive infinity is the unique absorbing zero element: `+Infinity * x = +Infinity` for all x.
 /// - Ordinary negative and positive finite numbers preserve exact Double precision.
-///   Floating-point arithmetic adheres to IEEE-754 semantics. Note that due to
-///   standard floating-point range limits and non-associativity of IEEE-754 addition,
-///   associativity holds within representable dynamic range but additions beyond
-///   Double capacity will saturate to +/-Infinity.
+///   Floating-point arithmetic adheres to IEEE-754 semantics. IEEE-754 floating-point
+///   addition does not strictly satisfy associativity or distributivity due to
+///   rounding errors and extreme dynamic scale discrepancies. Within the representable
+///   normal dynamic range, algebraic identities hold up to standard floating-point
+///   precision; additions overflowing Double dynamic capacity saturate to +/-Infinity.
 /// - Negative infinity `-Infinity` satisfies `-Infinity * 1 = -Infinity`, while
 ///   `+Infinity * -Infinity = +Infinity` due to zero absorption.
 pub struct MinPlus {

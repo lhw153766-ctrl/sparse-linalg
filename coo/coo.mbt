@@ -41,9 +41,8 @@ pub fn[F] Coo::empty(nrows : Int, ncols : Int) -> Coo[F] raise @err.SparseError 
       ncols.to_string(),
     )
   }
-  let max_dim = 100_000_000
-  if nrows > max_dim ||
-    ncols > max_dim ||
+  if nrows > @err.MAX_SPARSE_DIMENSION ||
+    ncols > @err.MAX_SPARSE_DIMENSION ||
     nrows >= 2147483647 ||
     ncols >= 2147483647 {
     raise @err.SparseError::DimensionMismatch(
@@ -70,9 +69,8 @@ pub fn[F] Coo::new(
       "Coo::new: negative shape " + nrows.to_string() + "x" + ncols.to_string(),
     )
   }
-  let max_dim = 100_000_000
-  if nrows > max_dim ||
-    ncols > max_dim ||
+  if nrows > @err.MAX_SPARSE_DIMENSION ||
+    ncols > @err.MAX_SPARSE_DIMENSION ||
     nrows >= 2147483647 ||
     ncols >= 2147483647 {
     raise @err.SparseError::DimensionMismatch(
@@ -80,6 +78,12 @@ pub fn[F] Coo::new(
       nrows.to_string() +
       "x" +
       ncols.to_string(),
+    )
+  }
+  if rows.length() > @err.MAX_SPARSE_NNZ {
+    raise @err.SparseError::DimensionMismatch(
+      "Coo::new: entry count exceeds maximum supported size: " +
+      rows.length().to_string(),
     )
   }
   if rows.length() != cols.length() || rows.length() != vals.length() {

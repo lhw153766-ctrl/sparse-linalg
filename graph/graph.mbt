@@ -319,18 +319,18 @@ pub fn page_rank(
   if a.nrows() != a.ncols() {
     raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
   }
-  if !(damping > 0.0 && damping < 1.0) {
+  if damping.is_nan() || damping.is_inf() || !(damping > 0.0 && damping < 1.0) {
     raise @err.SparseError::DimensionMismatch(
       "page_rank: damping must lie strictly between 0 and 1, got " +
       damping.to_string(),
     )
   }
-  if !(tol > 0.0 && tol <= 1.0) {
+  if tol.is_nan() || tol.is_inf() || !(tol > 0.0 && tol <= 1.0) {
     raise @err.SparseError::DimensionMismatch(
-      "page_rank: tol must be positive, got " + tol.to_string(),
+      "page_rank: tol must be positive and finite, got " + tol.to_string(),
     )
   }
-  if max_iter <= 0 {
+  if max_iter < 1 {
     raise @err.SparseError::DimensionMismatch(
       "page_rank: max_iter must be positive, got " + max_iter.to_string(),
     )
@@ -342,14 +342,23 @@ pub fn page_rank(
   let rp = a.row_ptr()
   let ci = a.col_idx()
   let va = a.vals()
+  let mut has_positive_weight = false
   for k = 0; k < va.length(); k = k + 1 {
     let w = va[k]
-    if !(w >= 0.0 && w <= 1.7976931348623157e308) {
+    if w.is_nan() || w.is_inf() || w < 0.0 {
       raise @err.SparseError::UnsupportedMatrix(
         "page_rank: edge weights must be finite and non-negative, got " +
         w.to_string(),
       )
     }
+    if w > 0.0 {
+      has_positive_weight = true
+    }
+  }
+  if va.length() > 0 && !has_positive_weight {
+    raise @err.SparseError::UnsupportedMatrix(
+      "page_rank: graph contains edges but no strictly positive weights",
+    )
   }
   // Transition probabilities P_ij = w_ij / sum_k(w_ik).
   // Computed using row-max scaling to guarantee scale invariance and prevent
@@ -370,6 +379,12 @@ pub fn page_rank(
       let mut scaled_sum = 0.0
       for k = rp[i]; k < rp[i + 1]; k = k + 1 {
         scaled_sum = scaled_sum + va[k] / row_max
+      }
+      if scaled_sum.is_nan() || scaled_sum.is_inf() || scaled_sum <= 0.0 {
+        raise @err.SparseError::UnsupportedMatrix(
+          "page_rank: row weight sum is non-finite or non-positive at vertex " +
+          i.to_string(),
+        )
       }
       for k = rp[i]; k < rp[i + 1]; k = k + 1 {
         probs[k] = va[k] / row_max / scaled_sum
@@ -402,22 +417,21 @@ pub fn page_rank(
         next[ci[k]] = next[ci[k]] + c_i * probs[k]
       }
     }
-    // Convergence is measured on the L1 change, which is the standard choice
-    // because the vector is a probability distribution.
-    let mut delta = 0.0
+    // Renormalise first to form a valid probability distribution, then measure
+    // the L1 change against the previous iterate.
     let mut total = 0.0
     for i = 0; i < n; i = i + 1 {
-      delta = delta + Double::abs(next[i] - rank[i])
       total = total + next[i]
     }
-    // Renormalise to absorb rounding, then swap the buffers.
     if total <= 0.0 || total.is_nan() || total.is_inf() {
       raise @err.SparseError::UnsupportedMatrix(
         "page_rank: numerical breakdown: rank distribution sum is non-finite or non-positive",
       )
     }
+    let mut delta = 0.0
     for i = 0; i < n; i = i + 1 {
       next[i] = next[i] / total
+      delta = delta + Double::abs(next[i] - rank[i])
     }
     let tmp = rank
     rank = next

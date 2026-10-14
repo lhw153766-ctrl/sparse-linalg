@@ -215,6 +215,12 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
   }
   let nrows = a.nrows()
   let ncols = b.ncols()
+  if ncols > @err.MAX_SPARSE_DIMENSION {
+    raise @err.SparseError::DimensionMismatch(
+      "spgemm: column dimension exceeds maximum supported size: " +
+      ncols.to_string(),
+    )
+  }
   let arp = a.row_ptr()
   let acol = a.col_idx()
   let aval = a.vals()
@@ -263,7 +269,7 @@ pub fn[F : Add + Mul + Default + Eq] spgemm(
 /// is generic over the scalar type and there is no single notion of "one" that
 /// covers integers and floating point alike.
 pub fn[F] identity(n : Int, one : F) -> @csr.Csr[F] raise @err.SparseError {
-  if n < 0 || n.to_int64() > @err.MAX_DENSE_ELEMENTS {
+  if n < 0 || n > @err.MAX_SPARSE_DIMENSION {
     raise @err.SparseError::DimensionMismatch(
       "identity: invalid size " + n.to_string(),
     )

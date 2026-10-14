@@ -141,10 +141,16 @@ fn require_int(s : String, what : String) -> Int raise @err.SparseError {
 
 ///|
 fn require_double(s : String, what : String) -> Double raise @err.SparseError {
-  @string.parse_double(s) catch {
+  let v = @string.parse_double(s) catch {
     _ =>
       raise parse_error("expected a number for " + what + ", got '" + s + "'")
   }
+  if v.is_nan() || v.is_inf() {
+    raise parse_error(
+      "expected a finite number for " + what + ", got '" + s + "'",
+    )
+  }
+  v
 }
 
 ///|
@@ -183,10 +189,13 @@ pub fn parse_header(line : String) -> MatrixMarketHeader raise @err.SparseError 
   let format = fields[2].to_lower()
   let field = fields[3].to_lower()
   let symmetry = fields[4].to_lower()
-  if object != "matrix" && object != "vector" {
-    raise parse_error(
-      "unsupported object '" + object + "', expected matrix or vector",
-    )
+  if object != "matrix" {
+    if object == "vector" {
+      raise parse_error(
+        "unsupported object 'vector': only 2D matrix objects are supported",
+      )
+    }
+    raise parse_error("unsupported object '" + object + "', expected matrix")
   }
   if format != "coordinate" && format != "array" {
     raise parse_error(
@@ -273,9 +282,8 @@ pub fn parse_matrix_market_full(
       "negative dimensions " + nrows.to_string() + "x" + ncols.to_string(),
     )
   }
-  let max_dim = 100_000_000
-  if nrows > max_dim ||
-    ncols > max_dim ||
+  if nrows > @err.MAX_SPARSE_DIMENSION ||
+    ncols > @err.MAX_SPARSE_DIMENSION ||
     nrows == 2147483647 ||
     ncols == 2147483647 {
     raise parse_error(
@@ -336,8 +344,8 @@ pub fn parse_matrix_market_full(
   if declared_nnz < 0 {
     raise parse_error("negative entry count " + declared_nnz.to_string())
   }
-  let max_nnz = 100_000_000
-  if declared_nnz > max_nnz || declared_nnz.to_int64() * 2L > 2147483647L {
+  if declared_nnz > @err.MAX_SPARSE_NNZ ||
+    declared_nnz.to_int64() * 2L > 2147483647L {
     raise parse_error(
       "entry count exceeds maximum supported size: " + declared_nnz.to_string(),
     )

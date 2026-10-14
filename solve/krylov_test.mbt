@@ -608,3 +608,62 @@ test "solve_cholesky rejects asymmetric input matrix" {
   }
   inspect(res, content="true")
 }
+
+///|
+test "mixed scale diagonal system underflow breakdown handling" {
+  let a = @csr.Csr::new(2, 2, [0, 1, 2], [0, 1], [1.0e200, 1.0e-200])
+  let b = [0.0, 5.0e-324]
+  let cg_res = try {
+    let _ = @solve.cg(a, b)
+    "converged"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(cg_res, content="rejected")
+
+  let bi_res = try {
+    let _ = @solve.bicgstab(a, b)
+    "converged"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(bi_res, content="rejected")
+
+  let gm = @solve.gmres(a, b)
+  inspect(gm.converged, content="true")
+  inspect(@solve.is_finite_vector(gm.x), content="true")
+  inspect(gm.residual <= 1.0e-6, content="true")
+  inspect(Double::abs(gm.x[0]) < 1.0e-15, content="true")
+  inspect(gm.x[1] > 0.0, content="true")
+}
+
+///|
+test "mixed scale diagonal system overflow breakdown handling" {
+  let a = @csr.Csr::new(2, 2, [0, 1, 2], [0, 1], [1.0e200, 1.0e-200])
+  let b = [1.0e200, 1.0e-200]
+  let cg_res = try {
+    let _ = @solve.cg(a, b)
+    "converged"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(cg_res, content="rejected")
+
+  let bi_res = try {
+    let _ = @solve.bicgstab(a, b)
+    "converged"
+  } catch {
+    @err.SparseError::UnsupportedMatrix(_) => "rejected"
+    _ => "other"
+  }
+  inspect(bi_res, content="rejected")
+
+  let gm = @solve.gmres(a, b)
+  inspect(gm.converged, content="true")
+  inspect(@solve.is_finite_vector(gm.x), content="true")
+  inspect(gm.residual <= 1.0e-6, content="true")
+  inspect(Double::abs(gm.x[0] - 1.0) < 1.0e-12, content="true")
+}

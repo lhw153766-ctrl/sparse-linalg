@@ -371,3 +371,78 @@ test "the laplacian is what cg and cholesky expect" {
     inspect(Double::abs(direct[i] - iterative.x[i]) < 1.0e-9, content="true")
   }
 }
+
+///|
+test "page rank input validation rejects non-finite and invalid arguments" {
+  let a : @csr.Csr[Double] = @csr.Csr::new(2, 2, [0, 1, 2], [1, 0], [1.0, 1.0])
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(a, damping=0.0 / 0.0)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(a, damping=1.0 / 0.0)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(a, tol=0.0 / 0.0)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(a, tol=0.0)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(a, max_iter=0)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "page rank rejects non-finite or all-zero edge weights" {
+  let nan_mat : @csr.Csr[Double] = @csr.Csr::new(2, 2, [0, 1, 2], [1, 0], [
+    0.0 / 0.0,
+    1.0,
+  ])
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(nan_mat)
+    }),
+    content="true",
+  )
+
+  let zero_mat : @csr.Csr[Double] = @csr.Csr::new(2, 2, [0, 1, 2], [1, 0], [
+    0.0, 0.0,
+  ])
+  inspect(
+    raises(() => {
+      let _ = @graph.page_rank(zero_mat)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "page rank normalizes before convergence delta check and preserves sum" {
+  let a : @csr.Csr[Double] = @csr.Csr::new(3, 3, [0, 2, 3, 4], [1, 2, 0, 1], [
+    10.0, 20.0, 5.0, 15.0,
+  ])
+  let r = @graph.page_rank(a, tol=1.0e-14, max_iter=500)
+  let mut s = 0.0
+  for v in r {
+    inspect(v >= 0.0, content="true")
+    inspect(!v.is_nan(), content="true")
+    inspect(!v.is_inf(), content="true")
+    s = s + v
+  }
+  inspect(Double::abs(s - 1.0) < 1.0e-12, content="true")
+}

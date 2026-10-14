@@ -537,3 +537,56 @@ test "matrix market rejects extra data lines in coordinate format" {
     content="true",
   )
 }
+
+///|
+test "matrix market rejects non-finite values in coordinate and array formats" {
+  let nan_coord = "%%MatrixMarket matrix coordinate real general\n1 1 1\n1 1 NaN\n"
+  let inf_coord = "%%MatrixMarket matrix coordinate real general\n1 1 1\n1 1 Infinity\n"
+  let neg_inf_coord = "%%MatrixMarket matrix coordinate real general\n1 1 1\n1 1 -Infinity\n"
+  let nan_arr = "%%MatrixMarket matrix array real general\n1 1\nNaN\n"
+  let inf_arr = "%%MatrixMarket matrix array real general\n1 1\nInfinity\n"
+
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(nan_coord)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(inf_coord)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(neg_inf_coord)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(nan_arr)
+    }),
+    content="true",
+  )
+  inspect(
+    raises(() => {
+      let _ = @io.parse_matrix_market(inf_arr)
+    }),
+    content="true",
+  )
+}
+
+///|
+test "matrix market rejects vector object at header stage" {
+  let text = "%%MatrixMarket vector coordinate real general\n1 1\n1 1.0\n"
+  let is_rejected = try {
+    let _ = @io.read_matrix_market_header(text)
+    false
+  } catch {
+    @err.SparseError::ParseError(_) => true
+    _ => false
+  }
+  inspect(is_rejected, content="true")
+}

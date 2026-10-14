@@ -183,6 +183,21 @@ pub fn CholeskyFactor::new(
     raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
   }
   let n = a.nrows()
+  if n > @err.MAX_SPARSE_DIMENSION {
+    raise @err.SparseError::DimensionMismatch(
+      "CholeskyFactor::new: dimension exceeds maximum supported size: " +
+      n.to_string(),
+    )
+  }
+  let va = a.vals()
+  for i = 0; i < va.length(); i = i + 1 {
+    let v = va[i]
+    if v.is_nan() || v.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "CholeskyFactor::new: matrix contains non-finite entry",
+      )
+    }
+  }
   if n == 0 {
     return { n: 0, col_ptr: [0], counts: [], row_idx: [], vals: [], }
   }
@@ -267,6 +282,15 @@ pub fn CholeskyFactor::new_checked(
   if a.nrows() != a.ncols() {
     raise @err.SparseError::NotSquare(a.nrows(), a.ncols())
   }
+  let va = a.vals()
+  for i = 0; i < va.length(); i = i + 1 {
+    let v = va[i]
+    if v.is_nan() || v.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "CholeskyFactor::new_checked: matrix contains non-finite entry",
+      )
+    }
+  }
   if !a.is_symmetric() {
     raise @err.SparseError::UnsupportedMatrix(
       "CholeskyFactor::new_checked: the matrix is not symmetric, so a Cholesky factor of it does not exist",
@@ -290,6 +314,14 @@ pub fn CholeskyFactor::solve(
       ", expected " +
       n.to_string(),
     )
+  }
+  for i = 0; i < b.length(); i = i + 1 {
+    let v = b[i]
+    if v.is_nan() || v.is_inf() {
+      raise @err.SparseError::UnsupportedMatrix(
+        "CholeskyFactor::solve: right-hand side contains non-finite value",
+      )
+    }
   }
   let cp = self.col_ptr
   let counts = self.counts
